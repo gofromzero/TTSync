@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TTSync 移动端分队原型</title>
+  <!--
+    PROTOTYPE — throw away after the decision.
+    Question: how should host, participant and viewer use the confirmed A/B workbench on a narrow screen?
+    Three mobile variants, switchable via ?variant=A|B|C&role=host|participant|viewer.
+    Run: python -m http.server 4173
+  -->
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17221d;
+      --muted: #637068;
+      --line: #d6ded8;
+      --paper: #f3f6f3;
+      --panel: #fff;
+      --accent: #146b4e;
+      --accent-soft: #e2f4eb;
+      --warn: #8d500c;
+      --warn-soft: #fff0d9;
+      --danger: #a93631;
+      --danger-soft: #ffe4e1;
+      --info: #155d73;
+      --info-soft: #e1f3f8;
+      --shadow: 0 14px 34px rgba(25, 46, 36, 0.14);
+      font-family: Inter, ui-sans-serif, system-ui, "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: #dfe6e1; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    button { font: inherit; }
+
+    button {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 12px;
+      color: var(--ink);
+      background: var(--panel);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:disabled { cursor: not-allowed; opacity: 0.46; }
+    button.primary { border-color: var(--accent); color: #fff; background: var(--accent); }
+    button.quiet { background: transparent; }
+    button.danger { color: var(--danger); }
+    button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    button:focus-visible,
+    summary:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid rgba(20, 107, 78, 0.3);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 500;
+      transform: translateY(-150%);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #fff;
+      background: #111;
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .prototype-ribbon {
+      padding: 7px 12px;
+      color: #e9fff4;
+      background: #14261e;
+      font-size: 11px;
+      line-height: 1.4;
+      text-align: center;
+    }
+
+    .prototype-ribbon strong { color: #80e7b9; }
+
+    .mobile-shell {
+      width: min(100%, 520px);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: var(--paper);
+      box-shadow: 0 0 0 1px rgba(23, 34, 29, 0.06);
+    }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.97);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-top,
+    .summary-strip,
+    .section-heading,
+    .team-heading,
+    .person-row,
+    .team-tab-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-top { align-items: flex-start; justify-content: space-between; }
+    .room-copy { min-width: 0; }
+    .room-copy h1 { overflow: hidden; margin: 0; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+    .room-copy p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+
+    .live-badge {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 5px 8px;
+      color: #145c43;
+      background: var(--accent-soft);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .role-switch {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .role-switch button { min-height: 40px; padding: 6px; font-size: 12px; }
+
+    .summary-strip {
+      justify-content: space-between;
+      margin-top: 10px;
+      border-radius: 10px;
+      padding: 8px 10px;
+      color: #34443c;
+      background: #eef2ef;
+      font-size: 12px;
+    }
+
+    .summary-strip strong { color: var(--ink); }
+
+    .prototype-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .prototype-actions button { flex: 1; min-height: 38px; padding: 6px 8px; font-size: 11px; }
+
+    .update-banner {
+      margin: 10px 12px 0;
+      border: 1px solid #b9dce6;
+      border-radius: 10px;
+      padding: 9px 11px;
+      color: var(--info);
+      background: var(--info-soft);
+      font-size: 12px;
+    }
+
+    main { padding: 12px 12px 160px; }
+    section + section { margin-top: 12px; }
+
+    .section-heading { justify-content: space-between; margin-bottom: 9px; }
+    .section-heading h2, .section-heading h3 { margin: 0; font-size: 15px; }
+    .section-heading small { color: var(--muted); }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 3px 10px rgba(30, 53, 43, 0.04);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .pill.open { color: #155f46; background: var(--accent-soft); }
+    .pill.full { color: var(--warn); background: var(--warn-soft); }
+    .pill.over { color: var(--danger); background: var(--danger-soft); }
+    .pill.neutral { color: #46534c; background: #edf0ee; }
+
+    .person-list { display: grid; gap: 8px; }
+
+    .person-card {
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 9px;
+      background: #fff;
+    }
+
+    .person-card.is-mine { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(20, 107, 78, 0.12); }
+    .person-row { min-width: 0; }
+
+    .avatar {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      color: #fff;
+      background: #3b6553;
+      font-weight: 900;
+    }
+
+    .person-copy { min-width: 0; flex: 1; }
+    .person-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .person-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .person-action { flex: 0 0 auto; min-height: 38px; padding: 6px 10px; font-size: 11px; }
+
+    .pending-scroll,
+    .team-tabs,
+    .matrix-scroller {
+      scrollbar-width: thin;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .pending-scroll {
+      display: grid;
+      grid-auto-columns: minmax(205px, 80%);
+      grid-auto-flow: column;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 2px 8px;
+      scroll-snap-type: x proximity;
+    }
+
+    .pending-scroll .person-card { scroll-snap-align: start; }
+
+    .team-panel { overflow: hidden; border-top: 4px solid var(--team-accent); }
+    .team-panel.over { border-color: #e2a09b; border-top-color: var(--danger); }
+    .team-heading { justify-content: space-between; padding: 11px; border-bottom: 1px solid var(--line); }
+    .team-heading h3 { margin: 0; font-size: 14px; }
+    .team-heading p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .team-members { display: grid; gap: 8px; padding: 10px; }
+
+    .capacity-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 10px 10px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .capacity-row span { margin-right: auto; }
+    .capacity-row button { min-width: 44px; padding: 4px 8px; }
+
+    /* A — vertical stack */
+    .variant-a .waiting-panel { padding: 11px; }
+    .variant-a .team-stack { display: grid; gap: 12px; }
+
+    /* B — horizontal matrix */
+    .variant-b { padding-inline: 0; }
+    .variant-b > .section-heading,
+    .variant-b > .pending-panel { margin-inline: 12px; }
+    .variant-b .pending-panel { padding: 11px; }
+
+    .team-tabs {
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      padding: 10px 12px;
+    }
+
+    .team-tabs button { min-height: 38px; padding: 6px 11px; white-space: nowrap; }
+
+    .matrix-scroller {
+      display: grid;
+      grid-auto-columns: calc(100% - 32px);
+      grid-auto-flow: column;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 0 12px 12px;
+      scroll-padding-left: 12px;
+      scroll-snap-type: x mandatory;
+    }
+
+    .matrix-scroller .team-panel { scroll-snap-align: start; }
+
+    /* C — overview plus focused team */
+    .team-overview {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .overview-card {
+      min-height: 82px;
+      border-left: 5px solid var(--team-accent);
+      padding: 10px;
+      text-align: left;
+    }
+
+    .overview-card strong { display: block; margin-bottom: 6px; }
+    .overview-card span { color: var(--muted); font-size: 11px; }
+    .focused-team { margin-top: 12px; }
+
+    .directory {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .directory summary { min-height: 44px; padding: 13px; cursor: pointer; font-weight: 800; }
+    .directory .person-list { padding: 0 10px 10px; }
+
+    .move-panel {
+      position: fixed;
+      right: max(10px, calc((100vw - 520px) / 2 + 10px));
+      bottom: 72px;
+      left: max(10px, calc((100vw - 520px) / 2 + 10px));
+      z-index: 80;
+      border: 1px solid #a7c8b7;
+      border-radius: 16px;
+      padding: 12px;
+      background: #f2fbf6;
+      box-shadow: var(--shadow);
+    }
+
+    .move-panel h2 { margin: 0; font-size: 14px; }
+    .move-panel p { margin: 4px 0 10px; color: var(--muted); font-size: 11px; }
+    .move-targets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+    .move-targets button { min-width: 0; }
+
+    .prototype-switcher {
+      position: fixed;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: 50%;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: min(calc(100% - 20px), 420px);
+      transform: translateX(-50%);
+      border-radius: 999px;
+      padding: 6px;
+      color: #fff;
+      background: #101713;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+    }
+
+    .prototype-switcher button {
+      flex: 0 0 44px;
+      border-color: #34443b;
+      border-radius: 50%;
+      padding: 0;
+      color: #fff;
+      background: #243229;
+      font-size: 18px;
+    }
+
+    .variant-label { min-width: 0; flex: 1; text-align: center; font-size: 10px; }
+    .variant-label strong { display: block; font-size: 12px; }
+
+    .state-debug { margin-top: 12px; border: 1px dashed #bdc8c1; border-radius: 10px; padding: 9px; font-size: 11px; }
+    .state-debug pre { overflow: auto; max-height: 180px; white-space: pre-wrap; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+
+    @media (min-width: 521px) {
+      body { padding-block: 18px; }
+      .mobile-shell { min-height: calc(100vh - 36px); border-radius: 18px; overflow: clip; }
+      .app-header { top: 18px; }
+    }
+
+    @media (max-width: 360px) {
+      .room-copy h1 { max-width: 215px; }
+      .summary-strip { align-items: flex-start; flex-direction: column; gap: 4px; }
+      .team-overview { grid-template-columns: 1fr; }
+      .move-targets { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到分队内容</a>
+  <div id="app"></div>
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    const variantMeta = {
+      A: { name: "纵向队伍栈", note: "待分配横滑，队伍依次展开" },
+      B: { name: "分页分队矩阵", note: "保留矩阵心智，一屏一队" },
+      C: { name: "队伍标签工作区", note: "总览先行，聚焦一支队伍" }
+    };
+
+    const roleMeta = {
+      host: { label: "主持人", note: "可移动和撤回人员牌" },
+      participant: { label: "参与者", note: "可认领一张人员牌" },
+      viewer: { label: "观众", note: "匿名只读" }
+    };
+
+    const seedPeople = [
+      ["p1", "阿青", "t1", "other"], ["p2", "阿洛", "t1", null], ["p3", "小满", "t1", "other"],
+      ["p4", "栗子", "t2", null], ["p5", "西瓜", "t2", "other"], ["p6", "老周", "t2", null], ["p7", "Anson", "t2", "other"],
+      ["p8", "星野", "t3", null], ["p9", "Kiki", "t3", "other"], ["p10", "纸鸢", "t4", null],
+      ["p11", "大熊", "t4", "other"], ["p12", "南风", "t4", null], ["p13", "桃子", "t4", "other"],
+      ["p14", "木木", null, null], ["p15", "Fox", null, "other"], ["p16", "十一", null, null]
+    ];
+
+    const params = new URLSearchParams(location.search);
+    const initialRole = roleMeta[params.get("role")] ? params.get("role") : "host";
+
+    const state = {
+      role: initialRole,
+      revision: 24,
+      updatedLabel: "刚刚",
+      selectedPersonId: null,
+      claimedPersonId: null,
+      activeTeamId: "t1",
+      notice: "",
+      teams: [
+        { id: "t1", name: "赤焰", capacity: 4, accent: "#d95b52" },
+        { id: "t2", name: "苍蓝", capacity: 4, accent: "#397ca7" },
+        { id: "t3", name: "青岚", capacity: 4, accent: "#3b8b65" },
+        { id: "t4", name: "金砂", capacity: 3, accent: "#b8862e" }
+      ],
+      people: seedPeople.map(([id, name, teamId, claimOwner]) => ({ id, name, teamId, claimOwner }))
+    };
+
+    const app = document.querySelector("#app");
+    const announcer = document.querySelector("#announcer");
+    let focusAfterRender = null;
+
+    function currentVariant() {
+      const key = new URLSearchParams(location.search).get("variant")?.toUpperCase();
+      return variantMeta[key] ? key : "A";
+    }
+
+    function teamFor(id) {
+      return state.teams.find(team => team.id === id) ?? null;
+    }
+
+    function peopleFor(teamId) {
+      return state.people.filter(person => person.teamId === teamId);
+    }
+
+    function selectedPerson() {
+      return state.people.find(person => person.id === state.selectedPersonId) ?? null;
+    }
+
+    function teamState(team) {
+      const count = peopleFor(team.id).length;
+      if (count > team.capacity) return "over";
+      if (count === team.capacity) return "full";
+      return "open";
+    }
+
+    function teamStatus(team) {
+      const count = peopleFor(team.id).length;
+      const status = teamState(team);
+      if (status === "over") return { className: "over", label: `超员 ${count}/${team.capacity}`, detail: `需要移出 ${count - team.capacity} 人` };
+      if (status === "full") return { className: "full", label: `已满 ${count}/${team.capacity}`, detail: "不能继续加入" };
+      return { className: "open", label: `${count}/${team.capacity}`, detail: `还可加入 ${team.capacity - count} 人` };
+    }
+
+    function claimLabel(person) {
+      if (person.claimOwner === "self") return "我的人员牌";
+      if (person.claimOwner === "other") return "已被认领";
+      return "未认领";
+    }
+
+    function roleAction(person) {
+      if (state.role === "host") {
+        return `<button class="person-action" type="button" data-action="select-person" data-person-id="${person.id}" aria-haspopup="true">移动</button>`;
+      }
+      if (state.role === "participant") {
+        if (person.claimOwner === "self") return `<button class="person-action danger" type="button" data-action="release" data-person-id="${person.id}">释放</button>`;
+        if (person.claimOwner === "other") return `<button class="person-action" type="button" disabled>已认领</button>`;
+        const disabled = state.claimedPersonId ? "disabled" : "";
+        return `<button class="person-action" type="button" data-action="claim" data-person-id="${person.id}" ${disabled}>认领</button>`;
+      }
+      return "";
+    }
+
+    function personCard(person, showTeam = false) {
+      const teamName = teamFor(person.teamId)?.name ?? "待分配";
+      const mine = person.claimOwner === "self" ? " is-mine" : "";
+      return `
+        <article class="person-card${mine}" data-person-card="${person.id}">
+          <div class="person-row">
+            <span class="avatar" aria-hidden="true">${person.name.slice(0, 1)}</span>
+            <div class="person-copy">
+              <strong>${person.name}</strong>
+              <span>${showTeam ? `${teamName} · ` : ""}${claimLabel(person)}</span>
+            </div>
+            ${roleAction(person)}
+          </div>
+        </article>`;
+    }
+
+    function cardsOrEmpty(people, message, showTeam = false) {
+      return people.length ? `<div class="person-list">${people.map(person => personCard(person, showTeam)).join("")}</div>` : `<p class="pill neutral">${message}</p>`;
+    }
+
+    function capacityControls(team) {
+      if (state.role !== "host") return "";
+      return `
+        <div class="capacity-row">
+          <span>触屏按钮也可调整容量</span>
+          <button type="button" data-action="capacity" data-team-id="${team.id}" data-delta="-1" aria-label="减少${team.name}容量">−</button>
+          <button type="button" data-action="capacity" data-team-id="${team.id}" data-delta="1" aria-label="增加${team.name}容量">＋</button>
+        </div>`;
+    }
+
+    function teamPanel(team) {
+      const status = teamStatus(team);
+      return `
+        <section class="panel team-panel ${status.className}" id="team-${team.id}" style="--team-accent:${team.accent}" aria-labelledby="team-title-${team.id}" tabindex="-1">
+          <div class="team-heading">
+            <div><h3 id="team-title-${team.id}">${team.name}</h3><p>${status.detail}</p></div>
+            <span class="pill ${status.className}">${status.label}</span>
+          </div>
+          <div class="team-members">${cardsOrEmpty(peopleFor(team.id), "队伍为空")}</div>
+          ${capacityControls(team)}
+        </section>`;
+    }
+
+    function pendingPanel(horizontal = false) {
+      const pending = peopleFor(null);
+      const contents = pending.length
+        ? horizontal
+          ? `<div class="pending-scroll">${pending.map(person => personCard(person)).join("")}</div>`
+          : cardsOrEmpty(pending, "所有人员牌都已分配")
+        : `<p class="pill neutral">所有人员牌都已分配</p>`;
+      return `
+        <section class="panel pending-panel waiting-panel" aria-labelledby="pending-title">
+          <div class="section-heading"><div><p class="eyebrow">Waiting</p><h2 id="pending-title">待分配</h2></div><span class="pill neutral">${pending.length} 人</span></div>
+          ${contents}
+        </section>`;
+    }
+
+    function variantA() {
+      return `
+        <main id="main-content" class="variant-a" tabindex="-1">
+          ${pendingPanel(true)}
+          <section aria-labelledby="teams-title-a">
+            <div class="section-heading"><div><p class="eyebrow">Vertical</p><h2 id="teams-title-a">当前分队</h2></div><small>上下滚动浏览</small></div>
+            <div class="team-stack">${state.teams.map(teamPanel).join("")}</div>
+          </section>
+          ${stateDebug()}
+        </main>`;
+    }
+
+    function variantB() {
+      return `
+        <main id="main-content" class="variant-b" tabindex="-1">
+          <div class="section-heading"><div><p class="eyebrow">Matrix</p><h2>分队矩阵</h2></div><small>横滑，一屏一队</small></div>
+          ${pendingPanel(true)}
+          <nav class="team-tabs" aria-label="跳到队伍">
+            ${state.teams.map(team => `<button type="button" data-action="jump-team" data-team-id="${team.id}">${team.name} · ${teamStatus(team).label}</button>`).join("")}
+          </nav>
+          <div class="matrix-scroller" aria-label="队伍横向列表">${state.teams.map(teamPanel).join("")}</div>
+          ${stateDebug()}
+        </main>`;
+    }
+
+    function variantC() {
+      const active = teamFor(state.activeTeamId) ?? state.teams[0];
+      return `
+        <main id="main-content" class="variant-c" tabindex="-1">
+          <section aria-labelledby="overview-title">
+            <div class="section-heading"><div><p class="eyebrow">Overview</p><h2 id="overview-title">队伍总览</h2></div><small>点一队展开</small></div>
+            <div class="team-overview">
+              ${state.teams.map(team => {
+                const status = teamStatus(team);
+                return `<button class="overview-card" style="--team-accent:${team.accent}" type="button" data-action="focus-team" data-team-id="${team.id}" aria-pressed="${active.id === team.id}"><strong>${team.name}</strong><span>${status.label} · ${status.detail}</span></button>`;
+              }).join("")}
+            </div>
+          </section>
+          <div class="focused-team">${teamPanel(active)}</div>
+          ${pendingPanel(false)}
+          <details class="directory">
+            <summary>按人员查看全部 ${state.people.length} 人</summary>
+            <div class="person-list">${state.people.map(person => personCard(person, true)).join("")}</div>
+          </details>
+          ${stateDebug()}
+        </main>`;
+    }
+
+    function sharedHeader() {
+      const pending = peopleFor(null).length;
+      const assigned = state.people.length - pending;
+      return `
+        <div class="prototype-ribbon"><strong>THROWAWAY PROTOTYPE</strong> · 320–520px 窄屏 · 数据仅在内存中</div>
+        <header class="app-header">
+          <div class="header-top">
+            <div class="room-copy"><h1>DOTA 周五训练</h1><p>房间 7K4P · ${roleMeta[state.role].label} · ${roleMeta[state.role].note}</p></div>
+            <span class="live-badge">● 版本 ${state.revision}</span>
+          </div>
+          <nav class="role-switch" aria-label="原型角色切换">
+            ${Object.entries(roleMeta).map(([key, meta]) => `<button type="button" data-action="set-role" data-role="${key}" aria-pressed="${state.role === key}">${meta.label}</button>`).join("")}
+          </nav>
+          <div class="summary-strip"><span><strong>${assigned}</strong> 已分配 / <strong>${pending}</strong> 待分配</span><span>${state.updatedLabel}</span></div>
+          <div class="prototype-actions">
+            <button type="button" data-action="simulate-update">模拟实时变动</button>
+            <button type="button" data-action="reset">复位原型</button>
+          </div>
+        </header>
+        ${state.notice ? `<div class="update-banner">${state.notice}</div>` : ""}`;
+    }
+
+    function movePanel() {
+      const person = selectedPerson();
+      if (!person || state.role !== "host") return "";
+      const current = teamFor(person.teamId)?.name ?? "待分配";
+      const targets = state.teams.map(team => {
+        const full = teamState(team) !== "open";
+        const disabled = person.teamId === team.id || full ? "disabled" : "";
+        const suffix = full ? `（${teamStatus(team).label}）` : "";
+        return `<button type="button" data-action="move" data-person-id="${person.id}" data-team-id="${team.id}" ${disabled}>${team.name}${suffix}</button>`;
+      }).join("");
+      return `
+        <section class="move-panel" aria-labelledby="move-title">
+          <div class="section-heading"><div><h2 id="move-title">移动 ${person.name}</h2><p>当前位置：${current}</p></div><button type="button" data-action="close-move" aria-label="关闭移动面板">关闭</button></div>
+          <div class="move-targets">${targets}<button type="button" data-action="move" data-person-id="${person.id}" data-team-id="" ${person.teamId === null ? "disabled" : ""}>撤回待分配</button></div>
+        </section>`;
+    }
+
+    function stateDebug() {
+      const data = {
+        variant: currentVariant(),
+        role: state.role,
+        revision: state.revision,
+        selectedPerson: selectedPerson()?.name ?? null,
+        claimedPerson: state.people.find(person => person.claimOwner === "self")?.name ?? null,
+        pending: peopleFor(null).map(person => person.name),
+        teams: state.teams.map(team => ({ name: team.name, status: teamStatus(team).label, people: peopleFor(team.id).map(person => person.name) }))
+      };
+      return `<details class="state-debug"><summary>完整原型状态</summary><pre>${JSON.stringify(data, null, 2)}</pre></details>`;
+    }
+
+    function switcher() {
+      if (new URLSearchParams(location.search).get("prototype") === "0") return "";
+      const key = currentVariant();
+      return `
+        <nav class="prototype-switcher" aria-label="原型变体切换">
+          <button type="button" data-action="variant" data-direction="-1" aria-label="上一个变体">←</button>
+          <span class="variant-label"><strong>${key} — ${variantMeta[key].name}</strong>${variantMeta[key].note}</span>
+          <button type="button" data-action="variant" data-direction="1" aria-label="下一个变体">→</button>
+        </nav>`;
+    }
+
+    function render() {
+      const key = currentVariant();
+      app.innerHTML = `<div class="mobile-shell">${sharedHeader()}${key === "A" ? variantA() : key === "B" ? variantB() : variantC()}${movePanel()}${switcher()}</div>`;
+      if (focusAfterRender) {
+        requestAnimationFrame(() => {
+          document.querySelector(focusAfterRender)?.focus();
+          focusAfterRender = null;
+        });
+      }
+    }
+
+    function announce(message) {
+      state.notice = message;
+      announcer.textContent = "";
+      requestAnimationFrame(() => { announcer.textContent = message; });
+    }
+
+    function touchRevision(message) {
+      state.revision += 1;
+      state.updatedLabel = "刚刚刷新";
+      announce(message);
+      render();
+    }
+
+    function canMove(person, targetTeamId) {
+      if (!person) return false;
+      if (!targetTeamId) return person.teamId !== null;
+      const target = teamFor(targetTeamId);
+      return Boolean(target && person.teamId !== targetTeamId && teamState(target) === "open");
+    }
+
+    function movePerson(personId, targetTeamId) {
+      const person = state.people.find(item => item.id === personId);
+      const normalizedTarget = targetTeamId || null;
+      if (state.role !== "host" || !canMove(person, normalizedTarget)) {
+        const target = teamFor(normalizedTarget);
+        announce(target ? `${target.name}${teamStatus(target).label}，不能加入` : "该移动当前不可用");
+        render();
+        return;
+      }
+      person.teamId = normalizedTarget;
+      state.selectedPersonId = null;
+      focusAfterRender = `[data-person-card="${person.id}"] .person-action`;
+      touchRevision(`${person.name}已移动到${teamFor(normalizedTarget)?.name ?? "待分配"}；所有在线角色将刷新快照`);
+    }
+
+    function claimPerson(personId) {
+      const person = state.people.find(item => item.id === personId);
+      if (state.role !== "participant" || !person || person.claimOwner || state.claimedPersonId) return;
+      person.claimOwner = "self";
+      state.claimedPersonId = person.id;
+      focusAfterRender = `[data-person-card="${person.id}"] .person-action`;
+      touchRevision(`已认领${person.name}；认领不改变队伍位置`);
+    }
+
+    function releasePerson(personId) {
+      const person = state.people.find(item => item.id === personId);
+      if (state.role !== "participant" || !person || person.claimOwner !== "self") return;
+      person.claimOwner = null;
+      state.claimedPersonId = null;
+      focusAfterRender = `[data-person-card="${person.id}"] .person-action`;
+      touchRevision(`已释放${person.name}；队伍位置保持不变`);
+    }
+
+    function changeCapacity(teamId, delta) {
+      const team = teamFor(teamId);
+      if (state.role !== "host" || !team) return;
+      team.capacity = Math.max(1, Math.min(20, team.capacity + delta));
+      focusAfterRender = `[data-action="capacity"][data-team-id="${team.id}"][data-delta="${delta}"]`;
+      touchRevision(`${team.name}容量调整为${team.capacity}；${teamStatus(team).detail}`);
+    }
+
+    function simulateUpdate() {
+      const person = state.people.find(item => item.id === "p16");
+      person.teamId = person.teamId === null ? "t3" : null;
+      touchRevision(`收到实时版本 ${state.revision + 1}：${person.name}${person.teamId ? "已编入青岚" : "已撤回待分配"}`);
+    }
+
+    function setRole(role) {
+      if (!roleMeta[role]) return;
+      state.role = role;
+      state.selectedPersonId = null;
+      const nextParams = new URLSearchParams(location.search);
+      nextParams.set("role", role);
+      history.replaceState(null, "", `${location.pathname}?${nextParams.toString()}`);
+      focusAfterRender = `[data-action="set-role"][data-role="${role}"]`;
+      announce(`已切换为${roleMeta[role].label}视图`);
+      render();
+    }
+
+    function setVariant(direction) {
+      const keys = Object.keys(variantMeta);
+      const index = keys.indexOf(currentVariant());
+      const next = keys[(index + direction + keys.length) % keys.length];
+      const nextParams = new URLSearchParams(location.search);
+      nextParams.set("variant", next);
+      history.replaceState(null, "", `${location.pathname}?${nextParams.toString()}`);
+      state.selectedPersonId = null;
+      render();
+    }
+
+    document.addEventListener("click", event => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === "variant") return setVariant(Number(button.dataset.direction));
+      if (action === "set-role") return setRole(button.dataset.role);
+      if (action === "select-person") {
+        state.selectedPersonId = button.dataset.personId;
+        focusAfterRender = ".move-panel [data-action='move']:not(:disabled)";
+        return render();
+      }
+      if (action === "close-move") {
+        const personId = state.selectedPersonId;
+        state.selectedPersonId = null;
+        focusAfterRender = `[data-person-card="${personId}"] .person-action`;
+        return render();
+      }
+      if (action === "move") return movePerson(button.dataset.personId, button.dataset.teamId);
+      if (action === "claim") return claimPerson(button.dataset.personId);
+      if (action === "release") return releasePerson(button.dataset.personId);
+      if (action === "capacity") return changeCapacity(button.dataset.teamId, Number(button.dataset.delta));
+      if (action === "focus-team") {
+        state.activeTeamId = button.dataset.teamId;
+        focusAfterRender = `#team-${state.activeTeamId}`;
+        return render();
+      }
+      if (action === "jump-team") {
+        document.querySelector(`#team-${button.dataset.teamId}`)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+        return;
+      }
+      if (action === "simulate-update") return simulateUpdate();
+      if (action === "reset") return location.reload();
+    });
+
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && state.selectedPersonId) {
+        const personId = state.selectedPersonId;
+        state.selectedPersonId = null;
+        focusAfterRender = `[data-person-card="${personId}"] .person-action`;
+        render();
+        return;
+      }
+      const tag = event.target.tagName;
+      if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "SUMMARY"].includes(tag) || event.target.isContentEditable) return;
+      if (event.key === "ArrowLeft") setVariant(-1);
+      if (event.key === "ArrowRight") setVariant(1);
+    });
+
+    function selfCheck() {
+      console.assert(teamState(teamFor("t2")) === "full", "prototype check: full team must be explicit");
+      console.assert(teamState(teamFor("t4")) === "over", "prototype check: over-capacity team must be explicit");
+      console.assert(peopleFor(null).length === 3, "prototype check: pending people must be present");
+      console.assert(!canMove(state.people[0], "t2"), "prototype check: full teams must reject moves");
+      console.assert(canMove(state.people[0], null), "prototype check: assigned people can be withdrawn");
+    }
+
+    selfCheck();
+    render();
+  </script>
+</body>
+</html>
