@@ -1577,7 +1577,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            code: "ResourceNotFoundProblem";
+            code: "RESOURCE_NOT_FOUND";
         };
         RoomNotFoundProblem: {
             /** Format: uri-reference */
@@ -1594,7 +1594,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            code: "RoomNotFoundProblem";
+            code: "ROOM_NOT_FOUND";
         };
         RevisionConflictProblem: {
             /** Format: uri-reference */
@@ -1611,7 +1611,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            code: "RevisionConflictProblem";
+            code: "REVISION_CONFLICT";
             currentRevision: number;
         };
         IdempotencyConflictProblem: {
@@ -1629,7 +1629,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            code: "IdempotencyConflictProblem";
+            code: "IDEMPOTENCY_CONFLICT";
         };
         StateConflictProblem: {
             /** Format: uri-reference */
@@ -1646,7 +1646,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            code: "StateConflictProblem";
+            code: "STATE_CONFLICT";
         };
     };
     responses: {
@@ -1663,7 +1663,7 @@ export interface components {
                  *       "detail": "JSON 请求体不完整。",
                  *       "instance": "/problems/req-400",
                  *       "code": "MALFORMED_REQUEST",
-                 *       "requestId": "req-400"
+                 *       "requestId": "018f5f60-c9c7-77e3-a6bb-08de53542952"
                  *     } */
                 "application/problem+json": components["schemas"]["MalformedRequestProblem"];
             };
@@ -1681,7 +1681,7 @@ export interface components {
                  *       "detail": "房间访问凭据缺失或已过期。",
                  *       "instance": "/problems/req-401",
                  *       "code": "UNAUTHORIZED",
-                 *       "requestId": "req-401"
+                 *       "requestId": "018f5f65-7191-71fd-b8a6-15c0c019d690"
                  *     } */
                 "application/problem+json": components["schemas"]["UnauthorizedProblem"];
             };
@@ -1699,7 +1699,7 @@ export interface components {
                  *       "detail": "当前角色没有此 capability。",
                  *       "instance": "/problems/req-403",
                  *       "code": "FORBIDDEN",
-                 *       "requestId": "req-403"
+                 *       "requestId": "018f5f6a-38c4-74a2-b0bb-eaf01a5d8f73"
                  *     } */
                 "application/problem+json": components["schemas"]["ForbiddenProblem"];
             };
@@ -1717,7 +1717,7 @@ export interface components {
                  *       "detail": "房间不存在或当前凭据不能查看。",
                  *       "instance": "/problems/req-404",
                  *       "code": "ROOM_NOT_FOUND",
-                 *       "requestId": "req-404"
+                 *       "requestId": "018f5f6f-80ae-7df8-9d5d-12277f280c57"
                  *     } */
                 "application/problem+json": components["schemas"]["ResourceNotFoundProblem"] | components["schemas"]["RoomNotFoundProblem"];
             };
@@ -1744,7 +1744,7 @@ export interface components {
                  *       "detail": "两个字段无效。",
                  *       "instance": "/problems/req-3",
                  *       "code": "VALIDATION_FAILED",
-                 *       "requestId": "req-3",
+                 *       "requestId": "018f5f7f-b80c-711a-965b-ce09e4e75ba8",
                  *       "violations": [
                  *         {
                  *           "path": "/commandId",
@@ -1775,7 +1775,7 @@ export interface components {
                  *       "detail": "请在 Retry-After 指定时间后重试。",
                  *       "instance": "/problems/req-429",
                  *       "code": "RATE_LIMITED",
-                 *       "requestId": "req-429"
+                 *       "requestId": "018f5f84-e090-799c-8cf4-d7a22a0bfa67"
                  *     } */
                 "application/problem+json": components["schemas"]["RateLimitedProblem"];
             };
@@ -1793,7 +1793,7 @@ export interface components {
                  *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
                  *       "instance": "/problems/req-500",
                  *       "code": "INTERNAL_ERROR",
-                 *       "requestId": "req-500"
+                 *       "requestId": "018f5f89-d59a-7e09-97c2-ca37b778be7d"
                  *     } */
                 "application/problem+json": components["schemas"]["InternalErrorProblem"];
             };

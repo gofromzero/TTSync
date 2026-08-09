@@ -1200,8 +1200,8 @@ paths:
                   expectedRevision: 8
                   type: movePlayerCard
                   payload:
-                    playerCardId: pc-1
-                    teamId: team-2
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
               noChangeCommand:
                 summary: 当前版本上的合法无变化命令
                 value:
@@ -1210,8 +1210,8 @@ paths:
                   expectedRevision: 9
                   type: movePlayerCard
                   payload:
-                    playerCardId: pc-1
-                    teamId: team-2
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
               staleRevision:
                 summary: 旧 revision，即使目标状态相同也返回 REVISION_CONFLICT
                 value:
@@ -1220,8 +1220,8 @@ paths:
                   expectedRevision: 7
                   type: movePlayerCard
                   payload:
-                    playerCardId: pc-1
-                    teamId: team-2
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
               idempotencyFingerprintConflict:
                 summary: 复用 commandId 但请求指纹不同，返回 IDEMPOTENCY_CONFLICT
                 value:
@@ -1230,10 +1230,11 @@ paths:
                   expectedRevision: 8
                   type: movePlayerCard
                   payload:
-                    playerCardId: pc-1
-                    teamId: team-1
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f51-53f2-7f06-82d5-8308070dd815
               multipleViolations:
                 summary: 多字段输入错误，返回 violations
+                x-schema-valid: false
                 value:
                   roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
                   commandId: not-a-uuid
@@ -4229,7 +4230,7 @@ components:
             detail: JSON 请求体不完整。
             instance: /problems/req-400
             code: MALFORMED_REQUEST
-            requestId: req-400
+            requestId: 018f5f60-c9c7-77e3-a6bb-08de53542952
     Unauthorized:
       description: 访问凭据缺失、无效或过期（401）
       content:
@@ -4243,7 +4244,7 @@ components:
             detail: 房间访问凭据缺失或已过期。
             instance: /problems/req-401
             code: UNAUTHORIZED
-            requestId: req-401
+            requestId: 018f5f65-7191-71fd-b8a6-15c0c019d690
     Forbidden:
       description: 有效身份缺少当前操作权限（403）
       content:
@@ -4257,7 +4258,7 @@ components:
             detail: 当前角色没有此 capability。
             instance: /problems/req-403
             code: FORBIDDEN
-            requestId: req-403
+            requestId: 018f5f6a-38c4-74a2-b0bb-eaf01a5d8f73
     NotFound:
       description: 资源不存在或对调用者不可见（404）
       content:
@@ -4275,7 +4276,7 @@ components:
             detail: 房间不存在或当前凭据不能查看。
             instance: /problems/req-404
             code: ROOM_NOT_FOUND
-            requestId: req-404
+            requestId: 018f5f6f-80ae-7df8-9d5d-12277f280c57
     Conflict:
       description: 版本、幂等指纹/操作者或资源状态冲突（409）
       content:
@@ -4296,7 +4297,7 @@ components:
                 detail: 操作未应用，房间已更新。
                 instance: /problems/req-1
                 code: REVISION_CONFLICT
-                requestId: req-1
+                requestId: 018f5f74-ddcb-76ef-8164-dfd82e2d96d8
                 currentRevision: 9
             idempotencyConflict:
               value:
@@ -4306,7 +4307,7 @@ components:
                 detail: commandId 已由不同操作者或请求指纹使用。
                 instance: /problems/req-2
                 code: IDEMPOTENCY_CONFLICT
-                requestId: req-2
+                requestId: 018f5f79-c84d-78f9-a50d-64b408158267
     UnprocessableEntity:
       description: 语法可解析但输入不满足合同或领域规则（422）
       content:
@@ -4320,7 +4321,7 @@ components:
             detail: 两个字段无效。
             instance: /problems/req-3
             code: VALIDATION_FAILED
-            requestId: req-3
+            requestId: 018f5f7f-b80c-711a-965b-ce09e4e75ba8
             violations:
               - path: /commandId
                 code: INVALID_UUID
@@ -4346,7 +4347,7 @@ components:
             detail: 请在 Retry-After 指定时间后重试。
             instance: /problems/req-429
             code: RATE_LIMITED
-            requestId: req-429
+            requestId: 018f5f84-e090-799c-8cf4-d7a22a0bfa67
     InternalServerError:
       description: 未预期的服务端失败（500）
       content:
@@ -4360,4 +4361,4 @@ components:
             detail: 请求未能完成，请使用 requestId 联系维护者。
             instance: /problems/req-500
             code: INTERNAL_ERROR
-            requestId: req-500
+            requestId: 018f5f89-d59a-7e09-97c2-ca37b778be7d

@@ -2,10 +2,30 @@ import { readFile } from 'node:fs/promises';
 
 import { compile } from 'json-schema-to-typescript';
 import openapiTS, { astToString } from 'openapi-typescript';
+import { parse } from 'yaml';
 
 export const openapiUrl = new URL('../contracts/v1/openapi.yaml', import.meta.url);
 export const eventSchemaUrl = new URL('../contracts/v1/room-events.schema.json', import.meta.url);
 export const generatedDir = new URL('../contracts/v1/generated/', import.meta.url);
+
+function resolveLocalRef(document, ref) {
+  return ref.slice(2).split('/').reduce((value, segment) => value[segment], document);
+}
+
+function addStableDiscriminatorMappings(document, value = document) {
+  if (!value || typeof value !== 'object') return;
+  if (value.discriminator?.propertyName && value.oneOf && !value.discriminator.mapping) {
+    const propertyName = value.discriminator.propertyName;
+    const entries = value.oneOf.flatMap((branch) => {
+      if (!branch.$ref) return [];
+      const property = resolveLocalRef(document, branch.$ref).properties?.[propertyName];
+      const literals = property?.const === undefined ? property?.enum ?? [] : [property.const];
+      return literals.map((literal) => [literal, branch.$ref]);
+    });
+    if (entries.length) value.discriminator.mapping = Object.fromEntries(entries);
+  }
+  for (const child of Object.values(value)) addStableDiscriminatorMappings(document, child);
+}
 
 export async function generateContractTypes() {
   const apiHeader = `/**
@@ -14,7 +34,9 @@ export async function generateContractTypes() {
  */
 
 `;
-  const apiTypes = apiHeader + astToString(await openapiTS(openapiUrl));
+  const openapi = parse(await readFile(openapiUrl, 'utf8'));
+  addStableDiscriminatorMappings(openapi);
+  const apiTypes = apiHeader + astToString(await openapiTS(openapi));
   const eventSchema = JSON.parse(await readFile(eventSchemaUrl, 'utf8'));
   const eventTypes = await compile(eventSchema, 'RoomInvalidationEvent', {
     bannerComment: '/* 由 room-events.schema.json 自动生成；请勿直接修改。 */',

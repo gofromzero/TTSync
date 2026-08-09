@@ -19,6 +19,20 @@ async function loadOpenApi() {
   return parse(await readFile(openapiPath, 'utf8'));
 }
 
+async function loadDereferencedOpenApi() {
+  return SwaggerParser.dereference(fileURLToPath(openapiPath));
+}
+
+function exampleValues(media) {
+  return [
+    ...(media.example === undefined ? [] : [{ value: media.example, valid: true }]),
+    ...Object.values(media.examples ?? {}).map((example) => ({
+      value: example.value,
+      valid: example['x-schema-valid'] !== false,
+    })),
+  ];
+}
+
 const publicOperationIds = [
   'registerAccount', 'resendVerification', 'verifyEmail', 'login', 'logout',
   'logoutAllSessions', 'requestPasswordReset', 'resetPassword', 'changePassword',
@@ -140,6 +154,33 @@ test('全部错误状态均提供可解析的 Problem Details 样例', async () 
   for (const name of responseNames) {
     const media = api.components.responses[name].content['application/problem+json'];
     assert.ok(media.example || media.examples, `${name} 缺少 Problem Details 样例`);
+  }
+});
+
+test('全部 OpenAPI request/response examples 均符合对应 schema', async () => {
+  const api = await loadDereferencedOpenApi();
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
+  addFormats(ajv);
+  const validateMediaExamples = (media, location) => {
+    if (!media?.schema) return;
+    const validate = ajv.compile(media.schema);
+    for (const example of exampleValues(media)) {
+      assert.equal(validate(example.value), example.valid, `${location}: ${ajv.errorsText(validate.errors)}`);
+    }
+  };
+
+  for (const [path, pathItem] of Object.entries(api.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (!operation?.responses) continue;
+      for (const [mediaType, media] of Object.entries(operation.requestBody?.content ?? {})) {
+        validateMediaExamples(media, `${method.toUpperCase()} ${path} request ${mediaType}`);
+      }
+      for (const [status, response] of Object.entries(operation.responses)) {
+        for (const [mediaType, media] of Object.entries(response.content ?? {})) {
+          validateMediaExamples(media, `${method.toUpperCase()} ${path} response ${status} ${mediaType}`);
+        }
+      }
+    }
   }
 });
 
