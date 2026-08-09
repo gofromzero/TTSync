@@ -1,0 +1,371 @@
+openapi: 3.0.3
+info:
+  title: TTSync MVP HTTP and SSE API
+  version: 1.0.0
+  description: >-
+    MVP v1 的公开合同。房间命令使用 JSON expectedRevision，因此过期版本映射为
+    409 而不是 If-Match/412。SSE 仅作失效提示，客户端始终以角色化完整快照收敛。
+servers:
+  - url: /api
+tags:
+  - name: rooms
+paths:
+  /v1/rooms/{roomId}/commands:
+    post:
+      tags: [rooms]
+      operationId: executeRoomCommand
+      summary: 执行类型化房间命令
+      description: >-
+        服务端先重新鉴权，再校验 expectedRevision。旧 revision 优先返回 409；相同
+        commandId、操作者及规范化请求指纹重试返回首次结果，不同操作者或指纹返回
+        IDEMPOTENCY_CONFLICT。合法但无变化的命令返回 changed=false，revision 不递增。
+      security:
+        - accountSession: []
+          csrfToken: []
+        - participantSession: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCommand'
+            examples:
+              changedCommand:
+                summary: 改变状态并递增 revision
+                value: &changedCommand
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                  expectedRevision: 8
+                  type: movePlayerCard
+                  payload: { playerCardId: pc-1, teamId: team-2 }
+              noChangeCommand:
+                summary: 当前版本上的合法无变化命令
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f31-246c-7681-b6a6-974894a2c281
+                  expectedRevision: 9
+                  type: movePlayerCard
+                  payload: { playerCardId: pc-1, teamId: team-2 }
+              staleRevision:
+                summary: 旧 revision，即使目标状态相同也返回 REVISION_CONFLICT
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f38-d1b9-73ea-a1a4-f49b9c686c82
+                  expectedRevision: 7
+                  type: movePlayerCard
+                  payload: { playerCardId: pc-1, teamId: team-2 }
+              idempotencyFingerprintConflict:
+                summary: 复用 commandId 但请求指纹不同，返回 IDEMPOTENCY_CONFLICT
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                  expectedRevision: 8
+                  type: movePlayerCard
+                  payload: { playerCardId: pc-1, teamId: team-1 }
+              multipleViolations:
+                summary: 多字段输入错误，返回 violations
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: not-a-uuid
+                  expectedRevision: -1
+                  type: movePlayerCard
+                  payload: {}
+      responses:
+        '200':
+          description: 命令成功或安全重试成功；不包含完整快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomCommandResult'
+              examples:
+                changed:
+                  value: { roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23, commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2, changed: true, revision: 9 }
+                unchanged:
+                  value: { roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23, commandId: 018f5f31-246c-7681-b6a6-974894a2c281, changed: false, revision: 9 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /v1/rooms/{roomId}/snapshot:
+    get:
+      tags: [rooms]
+      operationId: getRoomSnapshot
+      summary: 读取当前角色的完整权威快照
+      description: >-
+        每次按当前访问凭据重新鉴权，从一致读取视图返回角色可见的完整状态与服务端计算
+        capability。Caddy、浏览器缓存或条件读取都不得作为状态恢复机制。
+      security:
+        - accountSession: []
+        - participantSession: []
+        - spectatorSession: []
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+      responses:
+        '200':
+          description: >-
+            完整角色化快照。Cache-Control 固定 no-store；Caddy、浏览器缓存或条件读取
+            不得复用此响应完成恢复。
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum: [no-store]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSnapshot'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+  /v1/rooms/{roomId}/events:
+    get:
+      tags: [rooms]
+      operationId: streamRoomInvalidations
+      summary: 订阅房间失效通知
+      description: >-
+        初连和重连均须读取完整快照校准。SSE 是低延迟提示而非领域事件、状态差量或
+        可靠历史；丢失、重复、迟到、乱序或跳号都通过快照恢复。401/404 是停止重连终态。
+      security:
+        - accountSession: []
+        - participantSession: []
+        - spectatorSession: []
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: 可选提示；不保证历史补发，值为客户端最后处理的 revision。
+          schema: { type: string, pattern: '^[0-9]+$' }
+      responses:
+        '200':
+          description: >-
+            UTF-8 事件流。事件名 room-invalidation，id 等于 revision，建议 retry 为
+            3000ms；每 15 秒写入 `: heartbeat` 注释并立即 flush。心跳只保活和暴露断线。
+            data 只含 roomId/revision；收到提示、初连或重连后读取完整快照，此流不承载可靠历史。
+          x-sse-event: room-invalidation
+          x-sse-event-id: revision
+          x-sse-retry-milliseconds: 3000
+          x-sse-heartbeat-interval-seconds: 15
+          x-sse-heartbeat-format: ': heartbeat'
+          x-sse-data-schema: './room-events.schema.json'
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, enum: [no-store] }
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |-
+                retry: 3000
+
+                : heartbeat
+
+                event: room-invalidation
+                id: 9
+                data: {"roomId":"018f5f1e-17d8-7a38-94d0-ecf3184ccf23","revision":9}
+
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+components:
+  securitySchemes:
+    accountSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-session
+      description: 登录会话；不缓存团队或房间角色。
+    participantSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-participant
+    spectatorSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-spectator
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  parameters:
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    RoomCommand:
+      type: object
+      additionalProperties: false
+      required: [roomId, commandId, expectedRevision, type, payload]
+      properties:
+        roomId: { type: string, format: uuid }
+        commandId:
+          type: string
+          format: uuid
+          description: 浏览器生成；在房间、操作者及规范化请求指纹范围内幂等。
+        expectedRevision:
+          type: integer
+          minimum: 0
+          description: 本命令所针对的房间修订号；旧值优先产生 409。
+        type:
+          type: string
+          minLength: 1
+          description: 类型化 activity 房间命令的稳定 discriminator；具体命令由后续纵向票扩充。
+        payload:
+          type: object
+          description: 对应 type 的命令参数；不得包含鉴权或快照状态。
+    RoomCommandResult:
+      type: object
+      additionalProperties: false
+      required: [roomId, commandId, changed, revision]
+      properties:
+        roomId: { type: string, format: uuid }
+        commandId: { type: string, format: uuid }
+        changed:
+          type: boolean
+          description: false 表示合法无变化或安全重试；不会递增 revision 或发送通知。
+        revision:
+          type: integer
+          minimum: 0
+          description: 首次命令结果对应的实际房间修订号。
+        result:
+          type: object
+          description: 该命令必要的最小结果；禁止放入完整房间快照。
+          additionalProperties: true
+    RoomSnapshot:
+      type: object
+      additionalProperties: false
+      required: [roomId, revision, role, state, capabilities]
+      properties:
+        roomId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 0 }
+        role:
+          type: string
+          enum: [host, participant, spectator]
+        state:
+          type: object
+          description: 当前角色可见的完整房间状态；永不包含房间密码或观众令牌。
+          additionalProperties: true
+        capabilities:
+          type: array
+          description: 服务端按当前角色和状态计算的能力；客户端不得自行推导权限。
+          items: { type: string }
+    Violation:
+      type: object
+      additionalProperties: false
+      required: [path, code, message]
+      properties:
+        path:
+          type: string
+          description: 指向无效输入的 JSON Pointer。
+          pattern: '^/'
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]*$' }
+        message: { type: string, minLength: 1 }
+    ProblemDetails:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail, instance, code, requestId]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string, minLength: 1 }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string, minLength: 1 }
+        instance: { type: string, format: uri-reference }
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: 程序逻辑使用的稳定错误码；不得解析 detail。
+        requestId: { type: string, minLength: 1 }
+        currentRevision:
+          type: integer
+          minimum: 0
+          description: revision 冲突时可返回的当前房间修订号。
+        violations:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Violation' }
+  responses:
+    BadRequest:
+      description: 请求语法、JSON 或媒体类型无法解析（400）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/malformed-request', title: 请求无法解析, status: 400, detail: JSON 请求体不完整。, instance: '/problems/req-400', code: MALFORMED_REQUEST, requestId: req-400 }
+    Unauthorized:
+      description: 访问凭据缺失、无效或过期（401）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/unauthorized', title: 需要有效凭据, status: 401, detail: 房间访问凭据缺失或已过期。, instance: '/problems/req-401', code: UNAUTHORIZED, requestId: req-401 }
+    Forbidden:
+      description: 有效身份缺少当前操作权限（403）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/forbidden', title: 没有操作权限, status: 403, detail: 当前角色没有此 capability。, instance: '/problems/req-403', code: FORBIDDEN, requestId: req-403 }
+    NotFound:
+      description: 资源不存在或对调用者不可见（404）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/not-found', title: 房间不可见, status: 404, detail: 房间不存在或当前凭据不能查看。, instance: '/problems/req-404', code: ROOM_NOT_FOUND, requestId: req-404 }
+    Conflict:
+      description: 版本、幂等指纹/操作者或资源状态冲突（409）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          examples:
+            revisionConflict:
+              value: { type: 'https://ttsync.example/problems/revision-conflict', title: 房间已更新, status: 409, detail: 操作未应用，房间已更新。, instance: '/problems/req-1', code: REVISION_CONFLICT, requestId: req-1, currentRevision: 9 }
+            idempotencyConflict:
+              value: { type: 'https://ttsync.example/problems/idempotency-conflict', title: 命令标识冲突, status: 409, detail: commandId 已由不同操作者或请求指纹使用。, instance: '/problems/req-2', code: IDEMPOTENCY_CONFLICT, requestId: req-2 }
+    UnprocessableEntity:
+      description: 语法可解析但输入不满足合同或领域规则（422）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: 'https://ttsync.example/problems/validation-failed'
+            title: 输入校验失败
+            status: 422
+            detail: 两个字段无效。
+            instance: '/problems/req-3'
+            code: VALIDATION_FAILED
+            requestId: req-3
+            violations:
+              - { path: /commandId, code: INVALID_UUID, message: 必须是 UUID。 }
+              - { path: /expectedRevision, code: OUT_OF_RANGE, message: 必须大于或等于 0。 }
+    TooManyRequests:
+      description: 请求超过限速（429）；调用者应遵循 Retry-After
+      headers:
+        Retry-After:
+          required: true
+          schema: { type: string }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/rate-limited', title: 请求过于频繁, status: 429, detail: 请在 Retry-After 指定时间后重试。, instance: '/problems/req-429', code: RATE_LIMITED, requestId: req-429 }
+    InternalServerError:
+      description: 未预期的服务端失败（500）
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example: { type: 'https://ttsync.example/problems/internal-error', title: 服务暂时失败, status: 500, detail: 请求未能完成，请使用 requestId 联系维护者。, instance: '/problems/req-500', code: INTERNAL_ERROR, requestId: req-500 }
