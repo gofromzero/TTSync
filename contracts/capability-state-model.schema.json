@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ttsync.local/contracts/capability-state-model.schema.json",
+  "title": "TTSync F-04 capability and responsive state model",
+  "type": "object",
+  "required": ["version", "capabilityAuthority", "clientPolicy", "actors", "capabilities", "responsive", "stateDefinitions", "transitions", "coreOperations"],
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "capabilityAuthority": { "const": "server-authoritative" },
+    "clientPolicy": { "const": "consume-only-no-local-permission-rules" },
+    "actors": { "type": "object", "minProperties": 6 },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/capability" }
+    },
+    "responsive": { "type": "object" },
+    "stateDefinitions": { "type": "object" },
+    "transitions": { "type": "array", "items": { "type": "object", "required": ["id", "from", "trigger", "to", "effect"] } },
+    "coreOperations": { "type": "array", "items": { "$ref": "#/$defs/coreOperation" } }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "required": ["kind", "serverCapability", "decisions", "control", "visibleFields", "stories", "lifecycle"],
+      "properties": {
+        "kind": { "enum": ["read", "write"] },
+        "serverCapability": { "type": "string", "minLength": 1 },
+        "decisions": { "type": "object", "additionalProperties": { "enum": ["allow", "deny"] } },
+        "control": { "type": "string", "minLength": 1 },
+        "visibleFields": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "stories": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "lifecycle": { "type": "object" },
+        "requiresCapability": { "type": "string" }
+      }
+    },
+    "coreOperation": {
+      "type": "object",
+      "required": ["id", "keyboardPath", "minimumTargetPx", "focusRecovery", "nonColorAnnouncement"],
+      "properties": {
+        "minimumTargetPx": { "type": "integer", "minimum": 44 }
+      }
+    }
+  }
+}
