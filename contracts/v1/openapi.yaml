@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: TTSync MVP HTTP and SSE API
   version: 1.0.0
@@ -9,7 +9,307 @@ servers:
   - url: /api
 tags:
   - name: rooms
+  - name: identity
+  - name: teams
+  - name: games
+  - name: reporting
+  - name: avatars
+x-standard-responses: &standardResponses
+  '200':
+    description: 操作成功
+    content:
+      application/json:
+        schema: { $ref: '#/components/schemas/OperationResult' }
+  '400': { $ref: '#/components/responses/BadRequest' }
+  '401': { $ref: '#/components/responses/Unauthorized' }
+  '403': { $ref: '#/components/responses/Forbidden' }
+  '404': { $ref: '#/components/responses/NotFound' }
+  '409': { $ref: '#/components/responses/Conflict' }
+  '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  '429': { $ref: '#/components/responses/TooManyRequests' }
+  '500': { $ref: '#/components/responses/InternalServerError' }
+x-account-security: &accountSecurity
+  - accountSession: []
+    csrfToken: []
+x-public-security: &publicSecurity
+  - anonymousCsrf: []
+x-request-parameter: &requestParameter
+  - $ref: '#/components/parameters/RequestId'
 paths:
+  /v1/accounts:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: registerAccount
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterAccountRequest' } } } }
+      summary: 注册账号并发送验证邮件
+  /v1/accounts/verification/resend:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: resendVerification
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmailRequest' } } } }
+      summary: 以不暴露账号存在性的通用结果重发验证邮件
+  /v1/accounts/verification:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: verifyEmail
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TokenRequest' } } } }
+      summary: 使用一次性令牌验证邮箱
+  /v1/sessions:
+    get:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: getSession
+      summary: 读取当前会话和邮箱验证状态
+      parameters: *requestParameter
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: login
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+      summary: 使用规范化邮箱和密码登录
+    delete:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: logout
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmptyRequest' } } } }
+      summary: 撤销当前登录会话
+  /v1/sessions/all:
+    delete:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: logoutAllSessions
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmptyRequest' } } } }
+      summary: 撤销账号全部登录会话
+  /v1/password-reset-requests:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: requestPasswordReset
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/EmailRequest' } } } }
+      summary: 以通用结果请求密码重置邮件
+  /v1/password-resets:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: resetPassword
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ResetPasswordRequest' } } } }
+      summary: 使用一次性令牌重置密码并撤销全部会话
+  /v1/account/password:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: changePassword
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } } } }
+      summary: 重新确认当前密码后修改密码
+  /v1/account/email:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [identity]
+      operationId: changeEmail
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ChangeEmailRequest' } } } }
+      summary: 重新确认当前密码后发起邮箱变更
+  /v1/teams:
+    get:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: listTeams
+      summary: 列出当前账号可访问的团队
+      parameters: *requestParameter
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: createTeam
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateTeamRequest' } } } }
+      summary: 原子创建团队、首个成员和管理员角色
+  /v1/teams/{teamId}/members:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: createMember
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateMemberRequest' } } } }
+      summary: 创建未绑定团队成员
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+  /v1/teams/{teamId}/members/{memberId}:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: updateMember
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateMemberRequest' } } } }
+      summary: 以期望修订号修改成员资料或生命周期
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/MemberId'
+  /v1/teams/{teamId}/invitations:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: createInvitation
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateInvitationRequest' } } } }
+      summary: 为固定成员和邮箱创建或重发邀请
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+  /v1/invitations/{token}/accept:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [teams]
+      operationId: acceptInvitation
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AcceptInvitationRequest' } } } }
+      summary: 原子接受定向邀请
+      parameters:
+        - $ref: '#/components/parameters/InvitationToken'
+  /v1/teams/{teamId}/games:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [games]
+      operationId: createGameProject
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateGameProjectRequest' } } } }
+      summary: 创建游戏项目及模板版本 1
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+  /v1/teams/{teamId}/games/{gameId}:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [games]
+      operationId: updateGameProject
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateGameProjectRequest' } } } }
+      summary: 修改或启停游戏项目
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/teams/{teamId}/games/{gameId}/profiles:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [games]
+      operationId: createGameProfile
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateGameProfileRequest' } } } }
+      summary: 幂等建立成员游戏档案
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/teams/{teamId}/games/{gameId}/profiles/{profileId}:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [games]
+      operationId: updateGameProfile
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateGameProfileRequest' } } } }
+      summary: 修改允许范围内的游戏档案字段
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+        - $ref: '#/components/parameters/ProfileId'
+  /v1/teams/{teamId}/games/{gameId}/record-template:
+    put:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [games]
+      operationId: updateRecordTemplate
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateRecordTemplateRequest' } } } }
+      summary: 创建不可变的新记录模板版本
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/rooms:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [rooms]
+      operationId: createRoom
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateRoomRequest' } } } }
+      summary: 为启用项目创建房间并成为主持人
+  /v1/rooms/{roomId}/participant-sessions:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [rooms]
+      operationId: joinRoom
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JoinRoomRequest' } } } }
+      summary: 使用房间密码建立独立参与者会话
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+  /v1/rooms/{roomId}/spectator-sessions:
+    post:
+      security: *publicSecurity
+      responses: *standardResponses
+      tags: [rooms]
+      operationId: joinRoomAsSpectator
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/JoinSpectatorRequest' } } } }
+      summary: 使用观众令牌建立只读会话
+      parameters:
+        - $ref: '#/components/parameters/RoomId'
+  /v1/teams/{teamId}/games/{gameId}/history:
+    get:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [reporting]
+      operationId: getGameHistory
+      summary: 按时间、房间、成员、档案和状态筛选历史
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/teams/{teamId}/games/{gameId}/statistics:
+    get:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [reporting]
+      operationId: getGameStatistics
+      summary: 读取基于已确认最新有效版本的基础统计
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/teams/{teamId}/games/{gameId}/exports:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [reporting]
+      operationId: exportGameRecords
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ExportGameRecordsRequest' } } } }
+      summary: 从同一一致读取点即时导出六张 CSV
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - $ref: '#/components/parameters/GameId'
+  /v1/avatars:
+    post:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [avatars]
+      operationId: uploadAvatar
+      requestBody: { required: true, content: { multipart/form-data: { schema: { $ref: '#/components/schemas/AvatarUploadRequest' } } } }
+      summary: 上传并标准化为不可变静态 PNG
+  /v1/avatars/{avatarId}:
+    get:
+      security: *accountSecurity
+      responses: *standardResponses
+      tags: [avatars]
+      operationId: getAvatar
+      summary: 按资源上下文授权后读取头像
+      parameters:
+        - $ref: '#/components/parameters/AvatarId'
+        - $ref: '#/components/parameters/AvatarContext'
   /v1/rooms/{roomId}/commands:
     post:
       tags: [rooms]
@@ -161,6 +461,8 @@ paths:
           x-sse-heartbeat-interval-seconds: 15
           x-sse-heartbeat-format: ': heartbeat'
           x-sse-data-schema: './room-events.schema.json'
+          x-sse-subscription-order: [subscribe, read-current-revision, send-current-revision]
+          x-sse-listener-failure-action: close-stream-for-reconnect
           headers:
             Cache-Control:
               required: true
@@ -187,6 +489,11 @@ paths:
         '500': { $ref: '#/components/responses/InternalServerError' }
 components:
   securitySchemes:
+    anonymousCsrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: 未登录浏览器的同源 CSRF 令牌。
     accountSession:
       type: apiKey
       in: cookie
@@ -205,16 +512,87 @@ components:
       in: header
       name: X-CSRF-Token
   parameters:
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema: { type: string, minLength: 1, maxLength: 128 }
     RoomId:
       name: roomId
       in: path
       required: true
       schema: { type: string, format: uuid }
+    TeamId: { name: teamId, in: path, required: true, schema: { type: string, format: uuid } }
+    MemberId: { name: memberId, in: path, required: true, schema: { type: string, format: uuid } }
+    GameId: { name: gameId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProfileId: { name: profileId, in: path, required: true, schema: { type: string, format: uuid } }
+    InvitationToken: { name: token, in: path, required: true, schema: { type: string, minLength: 32, maxLength: 512 } }
+    AvatarId: { name: avatarId, in: path, required: true, schema: { type: string, format: uuid } }
+    AvatarContext:
+      name: context
+      in: query
+      required: true
+      description: 授权所依据的成员、房间、人员牌或历史快照资源 URI。
+      schema: { type: string, minLength: 1, maxLength: 512 }
   schemas:
+    Email: { type: string, format: email, maxLength: 254 }
+    Password: { type: string, minLength: 15, maxLength: 128, description: 15–128 个可打印 Unicode code point，不裁剪或静默截断。 }
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+    EmailRequest: { type: object, additionalProperties: false, required: [email], properties: { email: { $ref: '#/components/schemas/Email' } } }
+    TokenRequest: { type: object, additionalProperties: false, required: [token], properties: { token: { type: string, minLength: 32, maxLength: 512 } } }
+    RegisterAccountRequest: { type: object, additionalProperties: false, required: [email, password], properties: { email: { $ref: '#/components/schemas/Email' }, password: { $ref: '#/components/schemas/Password' }, invitationToken: { type: string, minLength: 32, maxLength: 512 } } }
+    LoginRequest: { type: object, additionalProperties: false, required: [email, password], properties: { email: { $ref: '#/components/schemas/Email' }, password: { type: string, minLength: 1, maxLength: 128 } } }
+    ResetPasswordRequest: { type: object, additionalProperties: false, required: [token, newPassword], properties: { token: { type: string, minLength: 32, maxLength: 512 }, newPassword: { $ref: '#/components/schemas/Password' } } }
+    ChangePasswordRequest: { type: object, additionalProperties: false, required: [currentPassword, newPassword], properties: { currentPassword: { type: string, minLength: 1, maxLength: 128 }, newPassword: { $ref: '#/components/schemas/Password' } } }
+    ChangeEmailRequest: { type: object, additionalProperties: false, required: [currentPassword, newEmail], properties: { currentPassword: { type: string, minLength: 1, maxLength: 128 }, newEmail: { $ref: '#/components/schemas/Email' } } }
+    CreateTeamRequest: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 100 } } }
+    CreateMemberRequest: { type: object, additionalProperties: false, required: [displayName], properties: { displayName: { type: string, minLength: 1, maxLength: 100 } } }
+    UpdateMemberRequest: { type: object, additionalProperties: false, required: [expectedRevision, action], properties: { expectedRevision: { type: integer, minimum: 0 }, action: { type: string, enum: [updateProfile, deactivate, restore, unbind, leave, grantAdmin, revokeAdmin] }, displayName: { type: string, minLength: 1, maxLength: 100 } } }
+    CreateInvitationRequest: { type: object, additionalProperties: false, required: [memberId, email], properties: { memberId: { type: string, format: uuid }, email: { $ref: '#/components/schemas/Email' } } }
+    AcceptInvitationRequest: { type: object, additionalProperties: false, required: [expectedInvitationVersion], properties: { expectedInvitationVersion: { type: integer, minimum: 1 } } }
+    CreateGameProjectRequest: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 100 } } }
+    UpdateGameProjectRequest: { type: object, additionalProperties: false, required: [expectedRevision, action], properties: { expectedRevision: { type: integer, minimum: 0 }, action: { type: string, enum: [rename, deactivate, restore] }, name: { type: string, minLength: 1, maxLength: 100 } } }
+    CreateGameProfileRequest: { type: object, additionalProperties: false, required: [memberId], properties: { memberId: { type: string, format: uuid } } }
+    UpdateGameProfileRequest: { type: object, additionalProperties: false, required: [expectedRevision, action], properties: { expectedRevision: { type: integer, minimum: 0 }, action: { type: string, enum: [update, deactivate, restore] }, nickname: { type: string, minLength: 1, maxLength: 100 } } }
+    UpdateRecordTemplateRequest: { type: object, additionalProperties: false, required: [expectedRevision, fields], properties: { expectedRevision: { type: integer, minimum: 0 }, fields: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/TemplateField' } } } }
+    TemplateField: { type: object, additionalProperties: false, required: [id, name, scope, type, required], properties: { id: { type: string, format: uuid }, name: { type: string, minLength: 1, maxLength: 50 }, scope: { type: string, enum: [team, player] }, type: { type: string, enum: [number, shortText, singleChoice] }, required: { type: boolean }, options: { type: array, maxItems: 20, items: { type: string, minLength: 1, maxLength: 50 } } } }
+    CreateRoomRequest: { type: object, additionalProperties: false, required: [gameId, password], properties: { gameId: { type: string, format: uuid }, password: { type: string, minLength: 8, maxLength: 128 } } }
+    JoinRoomRequest: { type: object, additionalProperties: false, required: [password], properties: { password: { type: string, minLength: 1, maxLength: 128 } } }
+    JoinSpectatorRequest: { type: object, additionalProperties: false, required: [token], properties: { token: { type: string, minLength: 32, maxLength: 512 } } }
+    ExportGameRecordsRequest: { type: object, additionalProperties: false, required: [from, to, statuses], properties: { from: { type: string, format: date }, to: { type: string, format: date }, statuses: { type: array, minItems: 1, uniqueItems: true, items: { type: string, enum: [draft, confirmed, voided] } } } }
+    OperationResult:
+      type: object
+      additionalProperties: false
+      required: [resourceId, revision, changed]
+      properties:
+        resourceId: { type: string, minLength: 1 }
+        revision: { type: integer, minimum: 0 }
+        changed: { type: boolean }
+    AvatarUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [context, expectedRevision, file]
+      properties:
+        context: { type: string, minLength: 1, maxLength: 512 }
+        expectedRevision: { type: integer, minimum: 0 }
+        file: { type: string, format: binary }
     RoomCommand:
       type: object
       additionalProperties: false
       required: [roomId, commandId, expectedRevision, type, payload]
+      discriminator:
+        propertyName: type
+      oneOf:
+        - $ref: '#/components/schemas/MovePlayerCardCommand'
+        - $ref: '#/components/schemas/ClaimPlayerCardCommand'
+        - $ref: '#/components/schemas/ReleasePlayerCardCommand'
+        - $ref: '#/components/schemas/SetTeamCapacityCommand'
+        - $ref: '#/components/schemas/CreatePlayerCardCommand'
+        - $ref: '#/components/schemas/CreateGameRecordCommand'
+        - $ref: '#/components/schemas/UpdateGameRecordCommand'
+        - $ref: '#/components/schemas/SetRoomStatusCommand'
       properties:
         roomId: { type: string, format: uuid }
         commandId:
@@ -227,15 +605,41 @@ components:
           description: 本命令所针对的房间修订号；旧值优先产生 409。
         type:
           type: string
-          minLength: 1
-          description: 类型化 activity 房间命令的稳定 discriminator；具体命令由后续纵向票扩充。
+          enum: [movePlayerCard, claimPlayerCard, releasePlayerCard, setTeamCapacity, createPlayerCard, createGameRecord, updateGameRecord, setRoomStatus]
         payload:
           type: object
-          description: 对应 type 的命令参数；不得包含鉴权或快照状态。
+          description: 由 type 对应的 oneOf 分支封闭定义；不得包含鉴权或快照状态。
+    RoomCommandBase:
+      type: object
+      required: [roomId, commandId, expectedRevision]
+      properties:
+        roomId: { type: string, format: uuid }
+        commandId: { type: string, format: uuid }
+        expectedRevision: { type: integer, minimum: 0 }
+    MovePlayerCardCommand: { $ref: '#/components/schemas/PlayerCardTargetCommand' }
+    ClaimPlayerCardCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: claimPlayerCard }, payload: { type: object, additionalProperties: false, required: [playerCardId], properties: { playerCardId: { type: string, minLength: 1 } } } } }], unevaluatedProperties: false }
+    ReleasePlayerCardCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: releasePlayerCard }, payload: { type: object, additionalProperties: false, required: [playerCardId], properties: { playerCardId: { type: string, minLength: 1 } } } } }], unevaluatedProperties: false }
+    SetTeamCapacityCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: setTeamCapacity }, payload: { type: object, additionalProperties: false, required: [teamId, capacity], properties: { teamId: { type: string, minLength: 1 }, capacity: { type: integer, minimum: 1 } } } } }], unevaluatedProperties: false }
+    CreatePlayerCardCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: createPlayerCard }, payload: { type: object, additionalProperties: false, required: [kind, displayName], properties: { kind: { type: string, enum: [member, guest] }, memberId: { type: string, format: uuid }, displayName: { type: string, minLength: 1, maxLength: 100 } } } } }], unevaluatedProperties: false }
+    CreateGameRecordCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: createGameRecord }, payload: { type: object, additionalProperties: false, required: [playedAt], properties: { playedAt: { type: string, format: date-time } } } } }], unevaluatedProperties: false }
+    UpdateGameRecordCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: updateGameRecord }, payload: { type: object, additionalProperties: false, required: [recordId, action], properties: { recordId: { type: string, minLength: 1 }, action: { type: string, enum: [saveDraft, confirm, correct, void, restore] }, reason: { type: string, minLength: 1, maxLength: 500 } } } } }], unevaluatedProperties: false }
+    SetRoomStatusCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: setRoomStatus }, payload: { type: object, additionalProperties: false, required: [status], properties: { status: { type: string, enum: [open, ended] } } } } }], unevaluatedProperties: false }
+    PlayerCardTargetCommand: { allOf: [{ $ref: '#/components/schemas/RoomCommandBase' }, { type: object, required: [type, payload], properties: { type: { const: movePlayerCard }, payload: { type: object, additionalProperties: false, required: [playerCardId, teamId], properties: { playerCardId: { type: string, minLength: 1 }, teamId: { type: [string, 'null'], minLength: 1 } } } } }], unevaluatedProperties: false }
     RoomCommandResult:
       type: object
       additionalProperties: false
       required: [roomId, commandId, changed, revision]
+      discriminator:
+        propertyName: type
+      oneOf:
+        - $ref: '#/components/schemas/MovePlayerCardResult'
+        - $ref: '#/components/schemas/ClaimPlayerCardResult'
+        - $ref: '#/components/schemas/ReleasePlayerCardResult'
+        - $ref: '#/components/schemas/SetTeamCapacityResult'
+        - $ref: '#/components/schemas/CreatePlayerCardResult'
+        - $ref: '#/components/schemas/CreateGameRecordResult'
+        - $ref: '#/components/schemas/UpdateGameRecordResult'
+        - $ref: '#/components/schemas/SetRoomStatusResult'
       properties:
         roomId: { type: string, format: uuid }
         commandId: { type: string, format: uuid }
@@ -246,14 +650,40 @@ components:
           type: integer
           minimum: 0
           description: 首次命令结果对应的实际房间修订号。
+        type: { type: string, enum: [movePlayerCard, claimPlayerCard, releasePlayerCard, setTeamCapacity, createPlayerCard, createGameRecord, updateGameRecord, setRoomStatus] }
         result:
           type: object
           description: 该命令必要的最小结果；禁止放入完整房间快照。
-          additionalProperties: true
+          additionalProperties: false
+          properties:
+            resourceId: { type: string, minLength: 1 }
+            status: { type: string, enum: [open, ended, draft, confirmed, voided] }
+    RoomCommandResultBase:
+      type: object
+      required: [roomId, commandId, changed, revision]
+      properties:
+        roomId: { type: string, format: uuid }
+        commandId: { type: string, format: uuid }
+        changed: { type: boolean }
+        revision: { type: integer, minimum: 0 }
+    MovePlayerCardResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: movePlayerCard }, result: { type: object, additionalProperties: false } } }], unevaluatedProperties: false }
+    ClaimPlayerCardResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: claimPlayerCard }, result: { type: object, additionalProperties: false } } }], unevaluatedProperties: false }
+    ReleasePlayerCardResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: releasePlayerCard }, result: { type: object, additionalProperties: false } } }], unevaluatedProperties: false }
+    SetTeamCapacityResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: setTeamCapacity }, result: { type: object, additionalProperties: false } } }], unevaluatedProperties: false }
+    CreatePlayerCardResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: createPlayerCard }, result: { type: object, additionalProperties: false, required: [resourceId], properties: { resourceId: { type: string, minLength: 1 } } } } }], unevaluatedProperties: false }
+    CreateGameRecordResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: createGameRecord }, result: { type: object, additionalProperties: false, required: [resourceId], properties: { resourceId: { type: string, minLength: 1 } } } } }], unevaluatedProperties: false }
+    UpdateGameRecordResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: updateGameRecord }, result: { type: object, additionalProperties: false, required: [status], properties: { status: { type: string, enum: [draft, confirmed, voided] } } } } }], unevaluatedProperties: false }
+    SetRoomStatusResult: { allOf: [{ $ref: '#/components/schemas/RoomCommandResultBase' }, { type: object, required: [type, result], properties: { type: { const: setRoomStatus }, result: { type: object, additionalProperties: false, required: [status], properties: { status: { type: string, enum: [open, ended] } } } } }], unevaluatedProperties: false }
     RoomSnapshot:
       type: object
       additionalProperties: false
       required: [roomId, revision, role, state, capabilities]
+      discriminator:
+        propertyName: role
+      oneOf:
+        - $ref: '#/components/schemas/HostRoomSnapshot'
+        - $ref: '#/components/schemas/ParticipantRoomSnapshot'
+        - $ref: '#/components/schemas/SpectatorRoomSnapshot'
       properties:
         roomId: { type: string, format: uuid }
         revision: { type: integer, minimum: 0 }
@@ -261,13 +691,28 @@ components:
           type: string
           enum: [host, participant, spectator]
         state:
-          type: object
-          description: 当前角色可见的完整房间状态；永不包含房间密码或观众令牌。
-          additionalProperties: true
+          $ref: '#/components/schemas/RoomState'
         capabilities:
           type: array
           description: 服务端按当前角色和状态计算的能力；客户端不得自行推导权限。
-          items: { type: string }
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RoomCapability' }
+    RoomState:
+      type: object
+      additionalProperties: false
+      required: [status, teams, playerCards, records]
+      properties:
+        status: { type: string, enum: [open, ended] }
+        teams: { type: array, items: { $ref: '#/components/schemas/RoomTeam' } }
+        playerCards: { type: array, items: { $ref: '#/components/schemas/PlayerCard' } }
+        records: { type: array, items: { $ref: '#/components/schemas/RoomRecord' } }
+    RoomTeam: { type: object, additionalProperties: false, required: [id, name, capacity], properties: { id: { type: string }, name: { type: string }, capacity: { type: integer, minimum: 1 } } }
+    PlayerCard: { type: object, additionalProperties: false, required: [id, displayName, teamId], properties: { id: { type: string }, displayName: { type: string }, teamId: { type: [string, 'null'] } } }
+    RoomRecord: { type: object, additionalProperties: false, required: [id, status], properties: { id: { type: string }, status: { type: string, enum: [draft, confirmed, voided] } } }
+    RoomCapability: { type: string, enum: [transferHost, manageRoom, managePlayerCards, manageTeams, manageRecords, claimPlayerCard, releasePlayerCard, editClaimedPlayerCard, readRoom] }
+    HostRoomSnapshot: { type: object, additionalProperties: false, required: [roomId, revision, role, state, capabilities], properties: { roomId: { type: string, format: uuid }, revision: { type: integer, minimum: 0 }, role: { type: string, enum: [host] }, state: { $ref: '#/components/schemas/RoomState' }, capabilities: { type: array, items: { $ref: '#/components/schemas/RoomCapability' } } } }
+    ParticipantRoomSnapshot: { type: object, additionalProperties: false, required: [roomId, revision, role, state, capabilities, claimedPlayerCardId], properties: { roomId: { type: string, format: uuid }, revision: { type: integer, minimum: 0 }, role: { type: string, enum: [participant] }, state: { $ref: '#/components/schemas/RoomState' }, capabilities: { type: array, items: { $ref: '#/components/schemas/RoomCapability' } }, claimedPlayerCardId: { type: [string, 'null'] } } }
+    SpectatorRoomSnapshot: { type: object, additionalProperties: false, required: [roomId, revision, role, state, capabilities], properties: { roomId: { type: string, format: uuid }, revision: { type: integer, minimum: 0 }, role: { type: string, enum: [spectator] }, state: { $ref: '#/components/schemas/RoomState' }, capabilities: { type: array, maxItems: 1, items: { type: string, enum: [readRoom] } } } }
     Violation:
       type: object
       additionalProperties: false
@@ -302,36 +747,71 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/Violation' }
+    BadRequestProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 400 }, code: { type: string, enum: [MALFORMED_REQUEST] } }
+    UnauthorizedProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 401 }, code: { type: string, enum: [UNAUTHORIZED] } }
+    ForbiddenProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 403 }, code: { type: string, enum: [FORBIDDEN] } }
+    NotFoundProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 404 }, code: { type: string, enum: [RESOURCE_NOT_FOUND, ROOM_NOT_FOUND] } }
+    ConflictProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties:
+        status: { const: 409 }
+        code: { type: string, enum: [REVISION_CONFLICT, IDEMPOTENCY_CONFLICT, STATE_CONFLICT] }
+        currentRevision: { type: integer, minimum: 0 }
+      oneOf:
+        - required: [currentRevision]
+          properties: { code: { const: REVISION_CONFLICT } }
+        - properties: { code: { enum: [IDEMPOTENCY_CONFLICT, STATE_CONFLICT] } }
+    ValidationProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      required: [violations]
+      properties:
+        status: { const: 422 }
+        code: { type: string, enum: [VALIDATION_FAILED] }
+        violations: { type: array, minItems: 1, items: { $ref: '#/components/schemas/Violation' } }
+    RateLimitedProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 429 }, code: { type: string, enum: [RATE_LIMITED] } }
+    InternalErrorProblem:
+      allOf: [{ $ref: '#/components/schemas/ProblemDetails' }]
+      properties: { status: { const: 500 }, code: { type: string, enum: [INTERNAL_ERROR] } }
   responses:
     BadRequest:
       description: 请求语法、JSON 或媒体类型无法解析（400）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/BadRequestProblem' }
           example: { type: 'https://ttsync.example/problems/malformed-request', title: 请求无法解析, status: 400, detail: JSON 请求体不完整。, instance: '/problems/req-400', code: MALFORMED_REQUEST, requestId: req-400 }
     Unauthorized:
       description: 访问凭据缺失、无效或过期（401）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/UnauthorizedProblem' }
           example: { type: 'https://ttsync.example/problems/unauthorized', title: 需要有效凭据, status: 401, detail: 房间访问凭据缺失或已过期。, instance: '/problems/req-401', code: UNAUTHORIZED, requestId: req-401 }
     Forbidden:
       description: 有效身份缺少当前操作权限（403）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/ForbiddenProblem' }
           example: { type: 'https://ttsync.example/problems/forbidden', title: 没有操作权限, status: 403, detail: 当前角色没有此 capability。, instance: '/problems/req-403', code: FORBIDDEN, requestId: req-403 }
     NotFound:
       description: 资源不存在或对调用者不可见（404）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/NotFoundProblem' }
           example: { type: 'https://ttsync.example/problems/not-found', title: 房间不可见, status: 404, detail: 房间不存在或当前凭据不能查看。, instance: '/problems/req-404', code: ROOM_NOT_FOUND, requestId: req-404 }
     Conflict:
       description: 版本、幂等指纹/操作者或资源状态冲突（409）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/ConflictProblem' }
           examples:
             revisionConflict:
               value: { type: 'https://ttsync.example/problems/revision-conflict', title: 房间已更新, status: 409, detail: 操作未应用，房间已更新。, instance: '/problems/req-1', code: REVISION_CONFLICT, requestId: req-1, currentRevision: 9 }
@@ -341,7 +821,7 @@ components:
       description: 语法可解析但输入不满足合同或领域规则（422）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/ValidationProblem' }
           example:
             type: 'https://ttsync.example/problems/validation-failed'
             title: 输入校验失败
@@ -361,11 +841,11 @@ components:
           schema: { type: string }
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/RateLimitedProblem' }
           example: { type: 'https://ttsync.example/problems/rate-limited', title: 请求过于频繁, status: 429, detail: 请在 Retry-After 指定时间后重试。, instance: '/problems/req-429', code: RATE_LIMITED, requestId: req-429 }
     InternalServerError:
       description: 未预期的服务端失败（500）
       content:
         application/problem+json:
-          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          schema: { $ref: '#/components/schemas/InternalErrorProblem' }
           example: { type: 'https://ttsync.example/problems/internal-error', title: 服务暂时失败, status: 500, detail: 请求未能完成，请使用 requestId 联系维护者。, instance: '/problems/req-500', code: INTERNAL_ERROR, requestId: req-500 }
