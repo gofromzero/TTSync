@@ -40,26 +40,15 @@ function validate(schema, manifest) {
     if (/(?:process\.env|Deno\.env|import\.meta\.env)/i.test(value)) fail(`[determinism:env] 禁止环境来源: ${path}`);
     if (/(?:crypto\.randomUUID|Math\.random|randomBytes|randomInt)\s*\(/i.test(value)) fail(`[determinism:random] 禁止随机来源: ${path}`);
   });
-  assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
-  assert.equal(schema.$id, "https://ttsync.test/specs/mvp-acceptance/schema.json");
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   addFormats(ajv);
   const validateStructure = ajv.compile(schema);
   if (!validateStructure(manifest)) fail(`[schema] ${ajv.errorsText(validateStructure.errors, { separator: "; " })}`);
-  assert.equal(manifest.schemaVersion, "1.0.0");
-  assert.equal(manifest.fixturePolicy?.semanticAliasesOnly, true);
-  assert.equal(manifest.fixturePolicy?.containsRealSecrets, false);
-
-  const expectedGroups = ["F-I", "F-T", "F-A", "F-F", "F-O"];
-  assert.deepEqual(Object.keys(manifest.fixtures).sort(), [...expectedGroups].sort());
   const aliases = [];
-  for (const [group, fixture] of Object.entries(manifest.fixtures)) {
-    assert.equal(fixture.id, group);
-    assert.ok(Array.isArray(fixture.aliases) && fixture.aliases.length > 0, `${group} 必须声明 aliases`);
+  for (const fixture of Object.values(manifest.fixtures)) {
     aliases.push(...fixture.aliases);
   }
   assert.equal(new Set(aliases).size, aliases.length, "夹具语义别名不得重复");
-  aliases.forEach((alias) => assert.match(alias, /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/, `非法语义别名: ${alias}`));
 
   const registries = {
     account: new Set(manifest.fixtures["F-I"].accounts.map(({ alias }) => alias)),
@@ -84,37 +73,17 @@ function validate(schema, manifest) {
     resolve("member", owner, `F-A.cards[${index}].owner`);
     resolve("actor", claim, `F-A.cards[${index}].claim`);
   });
-  manifest.fixtures["F-A"].commandExamples.forEach(({ commandIdRef, replayOf }, index) => {
+  manifest.fixtures["F-A"].commandExamples.forEach(({ actor, commandIdRef, replayOf }, index) => {
+    resolve("actor", actor, `F-A.commandExamples[${index}].actor`);
     resolve("commandId", commandIdRef, `F-A.commandExamples[${index}].commandIdRef`);
     if (replayOf !== undefined) resolve("command", replayOf, `F-A.commandExamples[${index}].replayOf`);
   });
 
-  assert.deepEqual(manifest.fixtures["F-I"].accounts.map(({ alias, verification }) => [alias, verification]), [["U0", "pending"], ["U1", "verified"], ["U2", "verified"]]);
-  assert.deepEqual(manifest.fixtures["F-I"].sessions.map(({ alias, state }) => [alias, state]), [["SESSION-U1-A", "active"], ["SESSION-U1-B", "active"]]);
-  assert.deepEqual(manifest.fixtures["F-I"].tokens.map(({ alias, state }) => [alias, state]), [["TOKEN-VALID", "valid"], ["TOKEN-EXPIRED", "expired"], ["TOKEN-REVOKED", "revoked"]]);
-  assert.deepEqual(manifest.fixtures["F-T"].members.map(({ alias, role, state }) => [alias, role, state]), [
-    ["M1", "administrator", "enabled"], ["M2", "administrator", "enabled"], ["MEMBER-REGULAR", "member", "enabled"],
-    ["MEMBER-DISABLED", "member", "disabled"], ["MEMBER-INVITED", "member", "invited"]
-  ]);
-  assert.deepEqual(manifest.fixtures["F-T"].projects.map(({ alias, state }) => [alias, state]), [["G1", "enabled"], ["G2", "disabled"]]);
-  assert.deepEqual(manifest.fixtures["F-T"].templates.map(({ alias, version }) => [alias, version]), [["TEMPLATE-V1", 1], ["TEMPLATE-V2", 2]]);
-  assert.deepEqual(manifest.fixtures["F-A"].actors.map(({ alias, kind }) => [alias, kind]), [["HOST-1", "host"], ["PARTICIPANT-1", "participant"], ["PARTICIPANT-2", "participant"], ["SPECTATOR-1", "spectator"]]);
-  assert.deepEqual(manifest.fixtures["F-A"].cards.map(({ alias, origin }) => [alias, origin]), [["CARD-MEMBER", "member"], ["CARD-GUEST", "guest"]]);
-  assert.deepEqual(manifest.fixtures["F-A"].teams.map(({ alias, capacity }) => [alias, capacity]), [["TEAM-CAPACITY-1", 1], ["TEAM-CAPACITY-2", 2]]);
-  assert.deepEqual(manifest.fixtures["F-A"].records.map(({ alias, state }) => [alias, state]), [["RECORD-DRAFT", "draft"], ["RECORD-CONFIRMED", "confirmed"], ["RECORD-VOIDED", "voided"]]);
-
-  const expectedMvpIds = Array.from({ length: 12 }, (_, index) => `MVP-${String(index + 1).padStart(2, "0")}`);
-  assert.deepEqual(manifest.mvps.map(({ id }) => id), expectedMvpIds, "必须完整且有序地声明 MVP-01..12");
   const allStories = new Set();
-  const fixtureIds = new Set(expectedGroups);
+  const fixtureIds = new Set(Object.keys(manifest.fixtures));
   const seenMvps = new Set();
   for (const mvp of manifest.mvps) {
-    for (const key of ["positive", "authorizationNegative", "concurrencyOrFailureNegative", "authoritativeSeam"]) {
-      assert.ok(typeof mvp[key] === "string" && mvp[key].trim(), `${mvp.id}.${key} 不得为空`);
-    }
-    assert.ok(Array.isArray(mvp.ownedStories) && mvp.ownedStories.length > 0, `${mvp.id} 必须拥有故事`);
     mvp.ownedStories.forEach((story) => {
-      assert.ok(Number.isInteger(story) && story >= 1 && story <= 163, `${mvp.id} 包含非法故事号`);
       if (allStories.has(story)) fail(`[story-owner] 故事 ${story} 存在多个 owner`);
       allStories.add(story);
     });
@@ -128,37 +97,12 @@ function validate(schema, manifest) {
     assert.ok(!mvp.ownedStories.includes(story), `${mvp.id} 不得把 owner 关系重复声明为 related`);
   }));
 
-  Object.entries(manifest.determinism.times).forEach(([name, value]) => {
-    assert.match(value, /^2026-01-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `时间 ${name} 必须是固定 UTC RFC3339 值`);
-  });
-  assert.deepEqual(manifest.determinism.times, {
-    epoch: "2026-01-15T10:00:00Z",
-    tokenExpiredAt: "2026-01-14T10:00:00Z",
-    tokenValidUntil: "2026-01-22T10:00:00Z",
-    zeroReferenceSince: "2026-01-08T10:00:00Z",
-    matchOccurredAt: "2026-01-15T09:30:00Z",
-    backupGenerationAt: "2026-01-15T11:00:00Z"
-  }, "[determinism:time] times 只能使用受控白名单值");
-  assert.deepEqual(manifest.determinism.revisions, { initial: 40, changed: 41, unchanged: 41, stale: 40 });
-  assert.deepEqual(manifest.determinism.commandIds, {
-    successfulMove: "00000000-0000-4000-8000-000000000001",
-    noOp: "00000000-0000-4000-8000-000000000002"
-  }, "[determinism:random] commandIds 只能使用受控白名单值");
-  Object.values(manifest.determinism.commandIds).forEach((value) => {
-    assert.match(value, /^00000000-0000-4000-8000-[0-9a-f]{12}$/, `commandId 必须是固定 UUID: ${value}`);
-  });
   assert.equal(manifest.fixtures["F-I"].tokens[0].expiresAt, manifest.determinism.times.tokenValidUntil);
   assert.equal(manifest.fixtures["F-I"].tokens[1].expiresAt, manifest.determinism.times.tokenExpiredAt);
   assert.equal(manifest.fixtures["F-I"].tokens[2].expiresAt, manifest.determinism.times.tokenValidUntil);
   assert.equal(manifest.fixtures["F-A"].room.revision, manifest.determinism.revisions.initial);
   manifest.fixtures["F-A"].records.forEach(({ occurredAt }) => assert.equal(occurredAt, manifest.determinism.times.matchOccurredAt));
   const [successfulMove, stableRetry, noOp, fingerprintConflict] = manifest.fixtures["F-A"].commandExamples;
-  assert.deepEqual(manifest.fixtures["F-A"].commandExamples.map(({ alias, requestFingerprint }) => [alias, requestFingerprint]), [
-    ["MOVE-SUCCESS", "move-card-member-to-team-capacity-2"],
-    ["MOVE-RETRY", "move-card-member-to-team-capacity-2"],
-    ["MOVE-NOOP", "move-card-member-to-team-capacity-2"],
-    ["MOVE-CONFLICT", "different-payload-with-reused-id"]
-  ], "[determinism:value] requestFingerprint 只能使用受控白名单值");
   assert.equal(successfulMove.commandIdRef, "successfulMove");
   assert.equal(stableRetry.commandIdRef, successfulMove.commandIdRef);
   assert.equal(stableRetry.requestFingerprint, successfulMove.requestFingerprint);
@@ -171,31 +115,14 @@ function validate(schema, manifest) {
   assert.notEqual(fingerprintConflict.requestFingerprint, successfulMove.requestFingerprint);
   assert.equal(fingerprintConflict.result, "stable-conflict");
 
-  const fileCategories = new Set(manifest.fixtures["F-F"].imageCases.map(({ category }) => category));
-  ["valid-jpeg", "valid-png", "disguised", "animated", "corrupt", "over-byte-limit", "over-dimension-limit", "over-pixel-limit"].forEach((category) => {
-    assert.ok(fileCategories.has(category), `F-F 缺少图片类别 ${category}`);
-  });
-  const assetStates = new Set(manifest.fixtures["F-F"].assets.map(({ state }) => state));
-  ["referenced", "zero-reference"].forEach((state) => assert.ok(assetStates.has(state), `F-F 缺少资产状态 ${state}`));
-  assert.equal(manifest.fixtures["F-F"].restoreSet.expected.digestVerification, "all-match");
-  assert.equal(manifest.fixtures["F-F"].restoreSet.expected.missingFiles, 0);
   assert.equal(manifest.fixtures["F-F"].restoreSet.generatedAt, manifest.determinism.times.backupGenerationAt);
   const restoreSet = manifest.fixtures["F-F"].restoreSet;
-  assert.deepEqual(restoreSet.components.map(({ semanticName }) => semanticName), ["database-dump", "avatar-archive", "recovery-manifest"]);
-  restoreSet.components.forEach(({ sha256, bytes }) => {
-    assert.match(sha256, /^[0-9a-f]{64}$/, "恢复集组件必须固定 SHA-256 摘要");
-    assert.ok(Number.isInteger(bytes) && bytes > 0, "恢复集组件必须固定正整数字节数");
-  });
   assert.deepEqual(restoreSet.manifestEntries, restoreSet.components.slice(0, 2).map(({ semanticName, sha256, bytes }) => ({ semanticName, sha256, bytes })));
-  assert.deepEqual(restoreSet.expected.verifiedComponents, ["database-dump", "avatar-archive"]);
 
   assert.ok(manifest.csvCases.some(({ value }) => /[\u3400-\u9fff]/u.test(value)), "CSV 必须覆盖中文");
   for (const prefix of ["=", "+", "-", "@"]) {
     assert.ok(manifest.csvCases.some(({ value, expectedEscaped }) => value.startsWith(prefix) && expectedEscaped.startsWith("'")), `CSV 缺少 ${prefix} 公式注入边界`);
   }
-  assert.ok(manifest.fixtures["F-O"].clients.length <= 20, "F-O 测试客户端不得超过 20 个");
-  assert.equal(manifest.fixtures["F-O"].capacityMeaning, "personal-test-evidence-only-not-a-production-capacity-commitment");
-
   const forbiddenKeys = /^(?:.*Id|.*_id|table|tableName|primaryKey|autoIncrementId|privateFunction)$/;
   const sensitiveKeys = /(?:password|secret|tokenValue|apiKey|privateKey|credential)$/i;
   const secretValue = /(?:BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|postgres(?:ql)?:\/\/[^\s/:]+:[^\s@]+@|password\s*[:=]\s*(?!<TEST_ONLY>))/i;
@@ -224,12 +151,32 @@ const manifest = await readJson(manifestUrl, "manifest");
 validate(schema, manifest);
 
 const rejectionCases = [
+  ["F-F limits 禁止额外字段", /\[schema\]/, (value) => { value.fixtures["F-F"].limits.untrackedLimit = 1; }],
+  ["F-F imageCase 必须完整", /\[schema\]/, (value) => { delete value.fixtures["F-F"].imageCases[0].expected; }],
+  ["F-O environment 禁止额外字段", /\[schema\]/, (value) => { value.fixtures["F-O"].environment.untrackedService = true; }],
+  ["MVP 必须按编号排序", /\[schema\]/, (value) => { [value.mvps[0], value.mvps[1]] = [value.mvps[1], value.mvps[0]]; }],
+  ["图片类别必须使用固定枚举", /\[schema\]/, (value) => { value.fixtures["F-F"].imageCases[0].category = "future-image-category"; }],
+  ["测试客户端上限由 schema 执行", /\[schema\]/, (value) => { value.fixtures["F-O"].clients.push("CLIENT-21"); }],
   ["重复故事 owner", /\[story-owner\]/, (value) => value.mvps[2].ownedStories.push(7)],
   ["未知 account 引用", /\[reference:account\]/, (value) => { value.fixtures["F-I"].sessions[0].account = "ACCOUNT-UNKNOWN"; }],
-  ["错误类别引用", /\[reference:account\]/, (value) => { value.fixtures["F-T"].members[0].account = "G1"; }],
+  ["account 错类引用", /\[reference:account\]/, (value) => { value.fixtures["F-T"].members[0].account = "G1"; }],
+  ["未知 project 引用", /\[reference:project\]/, (value) => { value.fixtures["F-A"].room.project = "PROJECT-UNKNOWN"; }],
+  ["project 错类引用", /\[reference:project\]/, (value) => { value.fixtures["F-A"].room.project = "TEMPLATE-V1"; }],
+  ["未知 template 引用", /\[reference:template\]/, (value) => { value.fixtures["F-T"].projects[0].template = "TEMPLATE-UNKNOWN"; }],
+  ["template 错类引用", /\[reference:template\]/, (value) => { value.fixtures["F-T"].projects[0].template = "G2"; }],
+  ["未知 member 引用", /\[reference:member\]/, (value) => { value.fixtures["F-A"].actors[0].member = "MEMBER-UNKNOWN"; }],
+  ["member 错类引用", /\[reference:member\]/, (value) => { value.fixtures["F-A"].cards[0].owner = "HOST-1"; }],
+  ["未知 claim actor 引用", /\[reference:actor\]/, (value) => { value.fixtures["F-A"].cards[0].claim = "ACTOR-UNKNOWN"; }],
+  ["claim actor 错类引用", /\[reference:actor\]/, (value) => { value.fixtures["F-A"].cards[0].claim = "M1"; }],
+  ["未知 command actor 引用", /\[reference:actor\]/, (value) => { value.fixtures["F-A"].commandExamples[0].actor = "ACTOR-UNKNOWN"; }],
+  ["command actor 错类引用", /\[reference:actor\]/, (value) => { value.fixtures["F-A"].commandExamples[0].actor = "M1"; }],
+  ["未知 commandIdRef 引用", /\[reference:commandId\]/, (value) => { value.fixtures["F-A"].commandExamples[0].commandIdRef = "unknownCommandId"; }],
+  ["commandIdRef 错类引用", /\[reference:commandId\]/, (value) => { value.fixtures["F-A"].commandExamples[0].commandIdRef = "MOVE-SUCCESS"; }],
+  ["未知 replayOf 引用", /\[reference:command\]/, (value) => { value.fixtures["F-A"].commandExamples[1].replayOf = "COMMAND-UNKNOWN"; }],
+  ["replayOf 错类引用", /\[reference:command\]/, (value) => { value.fixtures["F-A"].commandExamples[1].replayOf = "U1"; }],
   ["当前时间来源", /\[determinism:time\]/, (value) => { value.fixtures["F-A"].records[0].occurredAt = "CURRENT_TIMESTAMP"; }],
   ["环境来源", /\[determinism:env\]/, (value) => { value.fixtures["F-A"].commandExamples[0].requestFingerprint = "process.env.REQUEST_FINGERPRINT"; }],
   ["随机来源", /\[determinism:random\]/, (value) => { value.fixtures["F-A"].commandExamples[0].requestFingerprint = "crypto.randomUUID()"; }]
 ];
 rejectionCases.forEach(([name, expectedRule, mutate]) => expectRejected(schema, manifest, name, expectedRule, mutate));
-console.log(`MVP 验收 manifest 校验通过；${rejectionCases.length} 个语义负例均被拒绝。`);
+console.log(`MVP 验收 manifest 校验通过；${rejectionCases.length} 个定向负例均被预期规则拒绝。`);

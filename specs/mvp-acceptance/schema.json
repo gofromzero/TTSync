@@ -24,8 +24,16 @@
       "properties": {
         "times": {
           "type": "object",
-          "minProperties": 4,
-          "additionalProperties": { "type": "string", "format": "date-time" }
+          "additionalProperties": false,
+          "required": ["epoch", "tokenExpiredAt", "tokenValidUntil", "zeroReferenceSince", "matchOccurredAt", "backupGenerationAt"],
+          "properties": {
+            "epoch": { "const": "2026-01-15T10:00:00Z" },
+            "tokenExpiredAt": { "const": "2026-01-14T10:00:00Z" },
+            "tokenValidUntil": { "const": "2026-01-22T10:00:00Z" },
+            "zeroReferenceSince": { "const": "2026-01-08T10:00:00Z" },
+            "matchOccurredAt": { "const": "2026-01-15T09:30:00Z" },
+            "backupGenerationAt": { "const": "2026-01-15T11:00:00Z" }
+          }
         },
         "revisions": {
           "type": "object",
@@ -40,8 +48,12 @@
         },
         "commandIds": {
           "type": "object",
-          "minProperties": 2,
-          "additionalProperties": { "type": "string", "format": "uuid" }
+          "additionalProperties": false,
+          "required": ["successfulMove", "noOp"],
+          "properties": {
+            "successfulMove": { "const": "00000000-0000-4000-8000-000000000001" },
+            "noOp": { "const": "00000000-0000-4000-8000-000000000002" }
+          }
         }
       }
     },
@@ -75,7 +87,13 @@
       "type": "array",
       "minItems": 12,
       "maxItems": 12,
-      "items": { "$ref": "#/$defs/mvp" }
+      "prefixItems": [
+        { "$ref": "#/$defs/mvp01" }, { "$ref": "#/$defs/mvp02" }, { "$ref": "#/$defs/mvp03" },
+        { "$ref": "#/$defs/mvp04" }, { "$ref": "#/$defs/mvp05" }, { "$ref": "#/$defs/mvp06" },
+        { "$ref": "#/$defs/mvp07" }, { "$ref": "#/$defs/mvp08" }, { "$ref": "#/$defs/mvp09" },
+        { "$ref": "#/$defs/mvp10" }, { "$ref": "#/$defs/mvp11" }, { "$ref": "#/$defs/mvp12" }
+      ],
+      "items": false
     }
   },
   "$defs": {
@@ -87,9 +105,9 @@
       "properties": {
         "id": { "const": "F-I" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "accounts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/account" } },
-        "sessions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/session" } },
-        "tokens": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/token" } }
+        "accounts": { "$ref": "#/$defs/accounts" },
+        "sessions": { "$ref": "#/$defs/sessions" },
+        "tokens": { "$ref": "#/$defs/tokens" }
       }
     },
     "teamFixture": {
@@ -100,9 +118,9 @@
         "id": { "const": "F-T" },
         "aliases": { "$ref": "#/$defs/aliases" },
         "team": { "$ref": "#/$defs/team" },
-        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/member" } },
-        "projects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/project" } },
-        "templates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/template" } }
+        "members": { "$ref": "#/$defs/members" },
+        "projects": { "$ref": "#/$defs/projects" },
+        "templates": { "$ref": "#/$defs/templates" }
       }
     },
     "activityFixture": {
@@ -113,11 +131,11 @@
         "id": { "const": "F-A" },
         "aliases": { "$ref": "#/$defs/aliases" },
         "room": { "$ref": "#/$defs/room" },
-        "actors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/actor" } },
-        "cards": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/card" } },
-        "teams": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/activityTeam" } },
-        "records": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/matchRecord" } },
-        "commandExamples": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/commandExample" } }
+        "actors": { "$ref": "#/$defs/actors" },
+        "cards": { "$ref": "#/$defs/cards" },
+        "teams": { "$ref": "#/$defs/activityTeams" },
+        "records": { "$ref": "#/$defs/matchRecords" },
+        "commandExamples": { "$ref": "#/$defs/commandExamples" }
       }
     },
     "fileFixture": {
@@ -127,9 +145,9 @@
       "properties": {
         "id": { "const": "F-F" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "limits": { "type": "object" },
-        "imageCases": { "$ref": "#/$defs/records" },
-        "assets": { "$ref": "#/$defs/records" },
+        "limits": { "$ref": "#/$defs/fileLimits" },
+        "imageCases": { "$ref": "#/$defs/imageCases" },
+        "assets": { "$ref": "#/$defs/assets" },
         "restoreSet": {
           "type": "object",
           "additionalProperties": false,
@@ -137,9 +155,9 @@
           "properties": {
             "alias": { "$ref": "#/$defs/alias" },
             "generatedAt": { "type": "string", "format": "date-time" },
-            "components": { "$ref": "#/$defs/records" },
-            "manifestEntries": { "$ref": "#/$defs/records" },
-            "expected": { "type": "object" }
+            "components": { "$ref": "#/$defs/restoreComponents" },
+            "manifestEntries": { "$ref": "#/$defs/restoreManifestEntries" },
+            "expected": { "$ref": "#/$defs/restoreExpected" }
           }
         }
       }
@@ -151,14 +169,32 @@
       "properties": {
         "id": { "const": "F-O" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "environment": { "type": "object" },
-        "backupTarget": { "type": "object" },
+        "environment": { "$ref": "#/$defs/operationsEnvironment" },
+        "backupTarget": { "$ref": "#/$defs/backupTarget" },
         "clients": { "type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
         "capacityMeaning": { "const": "personal-test-evidence-only-not-a-production-capacity-commitment" }
       }
     },
     "aliases": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
-    "records": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "fileLimits": { "type": "object", "additionalProperties": false, "required": ["bytes", "maxDimension", "maxPixels", "normalizedLongestEdge", "maxConcurrentDecodes"], "properties": { "bytes": { "const": 5242880 }, "maxDimension": { "const": 4096 }, "maxPixels": { "const": 16000000 }, "normalizedLongestEdge": { "const": 512 }, "maxConcurrentDecodes": { "const": 2 } } },
+    "imageCase": { "type": "object", "additionalProperties": false, "required": ["alias", "category", "declaredMediaType", "decodedFormat", "bytes", "expected"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "category": { "enum": ["valid-jpeg", "valid-png", "disguised", "animated", "corrupt", "over-byte-limit", "over-dimension-limit", "over-pixel-limit"] }, "declaredMediaType": { "enum": ["image/jpeg", "image/png"] }, "decodedFormat": { "enum": ["jpeg", "png", "decode-error", "not-attempted"] }, "bytes": { "type": "integer", "minimum": 1 }, "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 }, "frames": { "type": "integer", "minimum": 1 }, "expected": { "enum": ["normalized-static-png", "rejected"] } } },
+    "imageCases": { "type": "array", "minItems": 8, "maxItems": 8, "prefixItems": [ { "$ref": "#/$defs/imageValidJpeg" }, { "$ref": "#/$defs/imageValidPng" }, { "$ref": "#/$defs/imageDisguised" }, { "$ref": "#/$defs/imageAnimated" }, { "$ref": "#/$defs/imageCorrupt" }, { "$ref": "#/$defs/imageOverBytes" }, { "$ref": "#/$defs/imageOverDimension" }, { "$ref": "#/$defs/imageOverPixels" } ], "items": false },
+    "imageValidJpeg": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "valid-jpeg" } } }] },
+    "imageValidPng": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "valid-png" } } }] },
+    "imageDisguised": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "disguised" } } }] },
+    "imageAnimated": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "animated" } } }] },
+    "imageCorrupt": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "corrupt" } } }] },
+    "imageOverBytes": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "over-byte-limit" } } }] },
+    "imageOverDimension": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "over-dimension-limit" } } }] },
+    "imageOverPixels": { "allOf": [{ "$ref": "#/$defs/imageCase" }, { "type": "object", "properties": { "category": { "const": "over-pixel-limit" } } }] },
+    "asset": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "references", "gcExpected"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["referenced", "zero-reference"] }, "references": { "type": "array", "uniqueItems": true, "items": { "enum": ["member", "card", "match-snapshot"] } }, "zeroReferenceSince": { "type": "string", "format": "date-time" }, "gcExpected": { "enum": ["retained", "eligible-after-lock-and-recheck"] } } },
+    "assets": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/asset" }, { "type": "object", "properties": { "state": { "const": "referenced" } } }] }, { "allOf": [{ "$ref": "#/$defs/asset" }, { "type": "object", "required": ["zeroReferenceSince"], "properties": { "state": { "const": "zero-reference" }, "zeroReferenceSince": {} } }] } ], "items": false },
+    "restoreComponent": { "type": "object", "additionalProperties": false, "required": ["semanticName", "sha256", "bytes"], "properties": { "semanticName": { "enum": ["database-dump", "avatar-archive", "recovery-manifest"] }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "bytes": { "type": "integer", "minimum": 1 } } },
+    "restoreComponents": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/restoreComponent" }, { "type": "object", "properties": { "semanticName": { "const": "database-dump" } } }] }, { "allOf": [{ "$ref": "#/$defs/restoreComponent" }, { "type": "object", "properties": { "semanticName": { "const": "avatar-archive" } } }] }, { "allOf": [{ "$ref": "#/$defs/restoreComponent" }, { "type": "object", "properties": { "semanticName": { "const": "recovery-manifest" } } }] } ], "items": false },
+    "restoreManifestEntries": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/restoreComponent" }, { "type": "object", "properties": { "semanticName": { "const": "database-dump" } } }] }, { "allOf": [{ "$ref": "#/$defs/restoreComponent" }, { "type": "object", "properties": { "semanticName": { "const": "avatar-archive" } } }] } ], "items": false },
+    "restoreExpected": { "type": "object", "additionalProperties": false, "required": ["digestVerification", "verifiedComponents", "missingFiles", "applicationSmoke"], "properties": { "digestVerification": { "const": "all-match" }, "verifiedComponents": { "const": ["database-dump", "avatar-archive"] }, "missingFiles": { "const": 0 }, "applicationSmoke": { "const": ["login", "room-read", "avatar-read", "test-write", "sse-converges"] } } },
+    "operationsEnvironment": { "type": "object", "additionalProperties": false, "required": ["alias", "profile", "resources", "services"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "profile": { "const": "minimum-personal-test" }, "resources": { "type": "object", "additionalProperties": false, "required": ["cpu", "memoryMiB", "diskGiB"], "properties": { "cpu": { "type": "integer", "minimum": 1 }, "memoryMiB": { "type": "integer", "minimum": 1 }, "diskGiB": { "type": "integer", "minimum": 1 } } }, "services": { "const": ["application", "postgresql", "caddy"] } } },
+    "backupTarget": { "type": "object", "additionalProperties": false, "required": ["alias", "failureDomain", "credential"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "failureDomain": { "const": "different-from-compose-host" }, "credential": { "const": "<TEST_ONLY>" } } },
     "account": { "type": "object", "additionalProperties": false, "required": ["alias", "verification", "email"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "verification": { "enum": ["pending", "verified"] }, "email": { "type": "string", "format": "email" } } },
     "session": { "type": "object", "additionalProperties": false, "required": ["alias", "account", "device", "state"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "account": { "$ref": "#/$defs/alias" }, "device": { "type": "string", "minLength": 1 }, "state": { "const": "active" } } },
     "token": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "expiresAt"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["valid", "expired", "revoked"] }, "expiresAt": { "type": "string", "format": "date-time" } } },
@@ -171,7 +207,18 @@
     "card": { "type": "object", "additionalProperties": false, "required": ["alias", "origin", "owner", "claim"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "origin": { "enum": ["member", "guest"] }, "owner": { "anyOf": [{ "$ref": "#/$defs/alias" }, { "type": "null" }] }, "claim": { "anyOf": [{ "$ref": "#/$defs/alias" }, { "type": "null" }] } } },
     "activityTeam": { "type": "object", "additionalProperties": false, "required": ["alias", "capacity"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "capacity": { "type": "integer", "minimum": 1 } } },
     "matchRecord": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "occurredAt"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["draft", "confirmed", "voided"] }, "occurredAt": { "type": "string", "format": "date-time" } } },
-    "commandExample": { "type": "object", "additionalProperties": false, "required": ["alias", "commandIdRef", "requestFingerprint", "expectedRevision"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "commandIdRef": { "type": "string", "minLength": 1 }, "requestFingerprint": { "type": "string", "minLength": 1 }, "expectedRevision": { "type": "integer", "minimum": 0 }, "resultRevision": { "type": "integer", "minimum": 0 }, "changed": { "type": "boolean" }, "replayOf": { "$ref": "#/$defs/alias" }, "result": { "const": "stable-conflict" } } },
+    "commandExample": { "type": "object", "additionalProperties": false, "required": ["alias", "actor", "commandIdRef", "requestFingerprint", "expectedRevision"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "actor": { "$ref": "#/$defs/alias" }, "commandIdRef": { "type": "string", "minLength": 1 }, "requestFingerprint": { "type": "string", "minLength": 1 }, "expectedRevision": { "type": "integer", "minimum": 0 }, "resultRevision": { "type": "integer", "minimum": 0 }, "changed": { "type": "boolean" }, "replayOf": { "$ref": "#/$defs/alias" }, "result": { "const": "stable-conflict" } } },
+    "accounts": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/account" }, { "type": "object", "properties": { "verification": { "const": "pending" } } }] }, { "allOf": [{ "$ref": "#/$defs/account" }, { "type": "object", "properties": { "verification": { "const": "verified" } } }] }, { "allOf": [{ "$ref": "#/$defs/account" }, { "type": "object", "properties": { "verification": { "const": "verified" } } }] } ], "items": false },
+    "sessions": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/session" } },
+    "tokens": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/token" }, { "type": "object", "properties": { "state": { "const": "valid" } } }] }, { "allOf": [{ "$ref": "#/$defs/token" }, { "type": "object", "properties": { "state": { "const": "expired" } } }] }, { "allOf": [{ "$ref": "#/$defs/token" }, { "type": "object", "properties": { "state": { "const": "revoked" } } }] } ], "items": false },
+    "members": { "type": "array", "minItems": 5, "maxItems": 5, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/member" }, { "type": "object", "properties": { "role": { "const": "administrator" }, "state": { "const": "enabled" } } }] }, { "allOf": [{ "$ref": "#/$defs/member" }, { "type": "object", "properties": { "role": { "const": "administrator" }, "state": { "const": "enabled" } } }] }, { "allOf": [{ "$ref": "#/$defs/member" }, { "type": "object", "properties": { "role": { "const": "member" }, "state": { "const": "enabled" } } }] }, { "allOf": [{ "$ref": "#/$defs/member" }, { "type": "object", "properties": { "role": { "const": "member" }, "state": { "const": "disabled" } } }] }, { "allOf": [{ "$ref": "#/$defs/member" }, { "type": "object", "properties": { "role": { "const": "member" }, "state": { "const": "invited" } } }] } ], "items": false },
+    "projects": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/project" }, { "type": "object", "properties": { "state": { "const": "enabled" } } }] }, { "allOf": [{ "$ref": "#/$defs/project" }, { "type": "object", "properties": { "state": { "const": "disabled" } } }] } ], "items": false },
+    "templates": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/template" }, { "type": "object", "properties": { "version": { "const": 1 } } }] }, { "allOf": [{ "$ref": "#/$defs/template" }, { "type": "object", "properties": { "version": { "const": 2 } } }] } ], "items": false },
+    "actors": { "type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/actor" }, { "type": "object", "required": ["member"], "properties": { "kind": { "const": "host" }, "member": {} } }] }, { "allOf": [{ "$ref": "#/$defs/actor" }, { "type": "object", "properties": { "kind": { "const": "participant" } } }] }, { "allOf": [{ "$ref": "#/$defs/actor" }, { "type": "object", "properties": { "kind": { "const": "participant" } } }] }, { "allOf": [{ "$ref": "#/$defs/actor" }, { "type": "object", "properties": { "kind": { "const": "spectator" } } }] } ], "items": false },
+    "cards": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/card" }, { "type": "object", "properties": { "origin": { "const": "member" } } }] }, { "allOf": [{ "$ref": "#/$defs/card" }, { "type": "object", "properties": { "origin": { "const": "guest" } } }] } ], "items": false },
+    "activityTeams": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/activityTeam" }, { "type": "object", "properties": { "capacity": { "const": 1 } } }] }, { "allOf": [{ "$ref": "#/$defs/activityTeam" }, { "type": "object", "properties": { "capacity": { "const": 2 } } }] } ], "items": false },
+    "matchRecords": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/matchRecord" }, { "type": "object", "properties": { "state": { "const": "draft" } } }] }, { "allOf": [{ "$ref": "#/$defs/matchRecord" }, { "type": "object", "properties": { "state": { "const": "confirmed" } } }] }, { "allOf": [{ "$ref": "#/$defs/matchRecord" }, { "type": "object", "properties": { "state": { "const": "voided" } } }] } ], "items": false },
+    "commandExamples": { "type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [ { "allOf": [{ "$ref": "#/$defs/commandExample" }, { "type": "object", "required": ["resultRevision", "changed"], "properties": { "requestFingerprint": { "const": "move-card-member-to-team-capacity-2" }, "changed": { "const": true }, "resultRevision": {} } }] }, { "allOf": [{ "$ref": "#/$defs/commandExample" }, { "type": "object", "required": ["resultRevision", "changed", "replayOf"], "properties": { "requestFingerprint": { "const": "move-card-member-to-team-capacity-2" }, "changed": { "const": true }, "resultRevision": {}, "replayOf": {} } }] }, { "allOf": [{ "$ref": "#/$defs/commandExample" }, { "type": "object", "required": ["resultRevision", "changed"], "properties": { "requestFingerprint": { "const": "move-card-member-to-team-capacity-2" }, "changed": { "const": false }, "resultRevision": {} } }] }, { "allOf": [{ "$ref": "#/$defs/commandExample" }, { "type": "object", "required": ["result"], "properties": { "requestFingerprint": { "const": "different-payload-with-reused-id" }, "result": {} } }] } ], "items": false },
     "mvp": {
       "type": "object",
       "additionalProperties": false,
@@ -187,6 +234,18 @@
         "fixtures": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["F-I", "F-T", "F-A", "F-F", "F-O"] } },
         "prerequisites": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^MVP-(?:0[1-9]|1[0-2])$" } }
       }
-    }
+    },
+    "mvp01": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-01" } } }] },
+    "mvp02": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-02" } } }] },
+    "mvp03": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-03" } } }] },
+    "mvp04": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-04" } } }] },
+    "mvp05": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-05" } } }] },
+    "mvp06": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-06" } } }] },
+    "mvp07": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-07" } } }] },
+    "mvp08": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-08" } } }] },
+    "mvp09": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-09" } } }] },
+    "mvp10": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-10" } } }] },
+    "mvp11": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-11" } } }] },
+    "mvp12": { "allOf": [{ "$ref": "#/$defs/mvp" }, { "type": "object", "properties": { "id": { "const": "MVP-12" } } }] }
   }
 }

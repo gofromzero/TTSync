@@ -97,10 +97,10 @@
         { "alias": "RECORD-VOIDED", "state": "voided", "occurredAt": "2026-01-15T09:30:00Z" }
       ],
       "commandExamples": [
-        { "alias": "MOVE-SUCCESS", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true },
-        { "alias": "MOVE-RETRY", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true, "replayOf": "MOVE-SUCCESS" },
-        { "alias": "MOVE-NOOP", "commandIdRef": "noOp", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 41, "resultRevision": 41, "changed": false },
-        { "alias": "MOVE-CONFLICT", "commandIdRef": "successfulMove", "requestFingerprint": "different-payload-with-reused-id", "expectedRevision": 41, "result": "stable-conflict" }
+        { "alias": "MOVE-SUCCESS", "actor": "HOST-1", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true },
+        { "alias": "MOVE-RETRY", "actor": "HOST-1", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true, "replayOf": "MOVE-SUCCESS" },
+        { "alias": "MOVE-NOOP", "actor": "HOST-1", "commandIdRef": "noOp", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 41, "resultRevision": 41, "changed": false },
+        { "alias": "MOVE-CONFLICT", "actor": "HOST-1", "commandIdRef": "successfulMove", "requestFingerprint": "different-payload-with-reused-id", "expectedRevision": 41, "result": "stable-conflict" }
       ]
     },
     "F-F": {
