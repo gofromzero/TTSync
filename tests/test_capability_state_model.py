@@ -56,6 +56,51 @@ class CapabilityStateModelContractTest(unittest.TestCase):
         required = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 143))
         self.assertTrue(required.issubset(self.model["traceability"]["stories"]))
 
+    def test_schema_is_executed_and_rejects_missing_required_field(self):
+        invalid = copy.deepcopy(self.model)
+        del invalid["capabilities"]["room.view"]["visibleFields"]
+        errors = self.validator.validate_model(invalid)
+        self.assertTrue(any("visibleFields" in error and "schema" in error for error in errors))
+
+    def test_validator_rejects_unknown_lifecycle_reference(self):
+        invalid = copy.deepcopy(self.model)
+        invalid["capabilities"]["room.claim"]["lifecycle"]["unknownState"] = "deny"
+        errors = self.validator.validate_model(invalid)
+        self.assertTrue(any("非法 lifecycle 引用" in error for error in errors))
+
+    def test_validator_rejects_unknown_story_capability_reference(self):
+        invalid = copy.deepcopy(self.model)
+        invalid["traceability"]["storyTrace"][0]["capabilities"].append("room.missing")
+        errors = self.validator.validate_model(invalid)
+        self.assertTrue(any("无效 capability 引用" in error for error in errors))
+
+    def test_every_traced_story_maps_to_capability_fields_and_lifecycle_rules(self):
+        traces = self.model["traceability"]["storyTrace"]
+        mapped = {story for trace in traces for story in trace["stories"]}
+        self.assertEqual(set(self.model["traceability"]["stories"]), mapped)
+        for trace in traces:
+            self.assertTrue(trace["capabilities"])
+            self.assertTrue(trace["visibleFields"])
+            self.assertTrue(trace["lifecycleRules"])
+
+    def test_profile_disabled_blocks_all_game_profile_writes(self):
+        for capability_id in (
+            "gameProfile.self.write",
+            "gameProfile.admin.write",
+            "gameProfile.host.write",
+        ):
+            self.assertEqual(
+                "deny",
+                self.model["capabilities"][capability_id]["lifecycle"]["profileDisabled"],
+            )
+
+    def test_record_creation_and_existing_record_maintenance_are_separate(self):
+        create = self.model["capabilities"]["room.record.create"]
+        maintain = self.model["capabilities"]["room.record.maintain"]
+        self.assertEqual("deny", create["lifecycle"]["projectDisabled"])
+        self.assertEqual("allow", maintain["lifecycle"]["projectDisabled"])
+        self.assertNotIn("room.record.write", self.model["capabilities"])
+
     def test_realtime_transitions_reject_regression_and_automatic_replay(self):
         transitions = {item["id"]: item for item in self.model["transitions"]}
         self.assertEqual("ignore", transitions["outOfOrderNotification"]["effect"])

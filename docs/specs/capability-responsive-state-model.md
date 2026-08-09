@@ -1,6 +1,6 @@
 # F-04 三角色 capability 与响应式状态模型
 
-本规格冻结 GitHub #28 的前置产品合同，不实现 Vue 页面或 B-01 骨架。机器可读权威制品是 [`contracts/capability-state-model.json`](../../contracts/capability-state-model.json)，结构合同是同目录的 `capability-state-model.schema.json`，语义完整性由 `python scripts/validate_capability_state_model.py` 校验。
+本规格冻结 GitHub #28 的前置产品合同，不实现 Vue 页面或 B-01 骨架。机器可读权威制品是 [`contracts/capability-state-model.json`](../../contracts/capability-state-model.json)，结构合同是同目录的 `capability-state-model.schema.json`；`python scripts/validate_capability_state_model.py` 会实际执行该 schema，再检查生命周期及故事交叉引用的语义完整性。
 
 ## 1. 权限边界
 
@@ -11,7 +11,9 @@
 
 ### 生命周期覆盖
 
-`open` 才按快照开放房间写入；`ended` 保持可见但只读，是否可重开由服务端单独授予；`deleted` 对普通访问者是 404 不可见终态；`credentialInvalid` 是 401 终态。成员、项目或档案停用是覆盖性限制，不批量改写人员牌、认领、队伍、对局或历史，也不把独立匿名访问会话当作登录权限的附属品。
+`open` 才按快照开放房间写入；`ended` 保持可见但只读，是否可重开由服务端单独授予；`deleted` 对普通访问者是 404 不可见终态；`credentialInvalid` 是 401 终态。成员、项目或档案停用是覆盖性限制，不批量改写人员牌、认领、队伍、对局或历史，也不把独立匿名访问会话当作登录权限的附属品。`profileDisabled` 对本人、管理员和主持人的全部游戏档案写 capability 都是 deny。
+
+项目停用后，“新增对局记录”和“维护既有记录”不是同一能力：`room.record.create` 被拒绝，`room.record.maintain` 仍可由当前主持人确认、更正、作废或恢复已有记录。两者保持独立稳定标识，客户端不得以一个合并写能力重新推导。
 
 ## 2. 三角色与响应式布局
 
@@ -42,4 +44,4 @@ python scripts/validate_capability_state_model.py
 python -m unittest discover -s tests -v
 ```
 
-验证器检查所有 capability 对六种访问上下文都有 allow/deny、控件、字段、故事和生命周期，三角色覆盖四种宽度与十种页面状态，关键实时迁移齐全，六个核心操作具有键盘、44px、焦点恢复和非纯颜色播报。未来若服务端合同改变 capability 名、字段或状态迁移，必须先更新此公开制品和验证，再实现客户端消费；不得在客户端另建一份权限矩阵。
+验证器先执行公开 schema，检查必填字段、字段可见性及生命周期结构；随后检查所有 capability 对六种访问上下文都有 allow/deny、控件、字段、故事和合法生命周期引用，并要求 `storyTrace` 将每个范围内故事交叉引用到实际 capability、可见字段和生命周期规则。它还验证三角色覆盖四种宽度与十种页面状态，关键实时迁移齐全，六个核心操作具有键盘、44px、焦点恢复和非纯颜色播报。未来若服务端合同改变 capability 名、字段或状态迁移，必须先更新此公开制品和验证，再实现客户端消费；不得在客户端另建一份权限矩阵。

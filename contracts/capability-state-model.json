@@ -18,6 +18,7 @@
     "ended": "保留可见读取，所有房间写 capability 为 deny；合格主持人可获 reopen",
     "deleted": "普通访问者不可见且停止实时连接；管理员仅可获得恢复 capability",
     "credentialInvalid": "该匿名访问上下文立即失效；不删除认领、队伍或历史",
+    "memberEnabled": "成员启用时才可按服务端 capability 使用长期资料写能力",
     "memberDisabled": "阻断团队长期权限，不撤销独立参与者/观众会话与既有认领",
     "projectDisabled": "阻断新活动与长期档案写入，保留既有历史读取",
     "profileDisabled": "阻断进入新房间与档案写入，既有房间牌及历史不被改写"
@@ -49,14 +50,14 @@
       "decisions": {"selfMember":"allow","teamAdminViewer":"deny","currentHost":"deny","claimingParticipant":"deny","otherParticipant":"deny","spectator":"deny"},
       "control": "本人游戏档案全部字段表单",
       "visibleFields": ["nickname","accountHandle","avatarOverrideId","status","revision"],
-      "stories": [56,59,68], "lifecycle": {"memberEnabled":"allow","memberDisabled":"deny","projectDisabled":"deny","profileDisabled":"allow"}
+      "stories": [56,59,68], "lifecycle": {"memberEnabled":"allow","memberDisabled":"deny","projectDisabled":"deny","profileDisabled":"deny"}
     },
     "gameProfile.admin.write": {
       "kind": "write", "serverCapability": "gameProfile.admin.write",
       "decisions": {"selfMember":"deny","teamAdminViewer":"allow","currentHost":"deny","claimingParticipant":"deny","otherParticipant":"deny","spectator":"deny"},
       "control": "管理员游戏档案全部字段表单",
       "visibleFields": ["nickname","accountHandle","avatarOverrideId","status","revision"],
-      "stories": [57,59,67], "lifecycle": {"memberEnabled":"allow","memberDisabled":"allow","projectDisabled":"deny","profileDisabled":"allow"}
+      "stories": [57,59,67], "lifecycle": {"memberEnabled":"allow","memberDisabled":"allow","projectDisabled":"deny","profileDisabled":"deny"}
     },
     "gameProfile.host.write": {
       "kind": "write", "serverCapability": "gameProfile.host.write",
@@ -128,12 +129,19 @@
       "visibleFields": ["teamId","capacity","occupancy","expectedRevision"],
       "stories": [106,107,140,141], "lifecycle": {"open":"allow","ended":"deny","deleted":"deny"}
     },
-    "room.record.write": {
-      "kind": "write", "serverCapability": "room.record.write", "requiresCapability": "room.host.takeover",
+    "room.record.create": {
+      "kind": "write", "serverCapability": "room.record.create", "requiresCapability": "room.host.takeover",
       "decisions": {"selfMember":"deny","teamAdminViewer":"deny","currentHost":"allow","claimingParticipant":"deny","otherParticipant":"deny","spectator":"deny"},
-      "control": "主持人创建、确认、更正、作废、恢复记录；管理员查看态无写控件",
+      "control": "主持人新增记录；管理员查看态无写控件",
       "visibleFields": ["recordStatus","snapshot","templateFields","expectedRevision"],
-      "stories": [80,108,109,112,113,114,115,116,117,118,119,120], "lifecycle": {"open":"allow","ended":"deny","deleted":"deny"}
+      "stories": [80,108,109,110,111], "lifecycle": {"open":"allow","ended":"deny","deleted":"deny","projectDisabled":"deny"}
+    },
+    "room.record.maintain": {
+      "kind": "write", "serverCapability": "room.record.maintain", "requiresCapability": "room.host.takeover",
+      "decisions": {"selfMember":"deny","teamAdminViewer":"deny","currentHost":"allow","claimingParticipant":"deny","otherParticipant":"deny","spectator":"deny"},
+      "control": "主持人确认、更正、作废或恢复既有记录；项目停用时不显示新增入口",
+      "visibleFields": ["recordStatus","snapshot","templateFields","expectedRevision"],
+      "stories": [80,112,113,114,115,116,117,118,119,120], "lifecycle": {"open":"allow","ended":"deny","deleted":"deny","projectDisabled":"allow"}
     },
     "room.lifecycle.write": {
       "kind": "write", "serverCapability": "room.lifecycle.write", "requiresCapability": "room.host.takeover",
@@ -217,6 +225,16 @@
   ],
   "traceability": {
     "mvp": ["MVP-03","MVP-04","MVP-05","MVP-06","MVP-07","MVP-08","MVP-09","MVP-11"],
-    "stories": [56,57,58,67,68,69,70,71,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142]
+    "stories": [56,57,58,67,68,69,70,71,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142],
+    "storyTrace": [
+      {"stories":[56,57,58],"capabilities":["memberProfile.self.write","memberProfile.admin.write","gameProfile.self.write","gameProfile.admin.write","gameProfile.host.write"],"visibleFields":["member.displayName","nickname","accountHandle","avatarOverrideId","status","revision"],"lifecycleRules":["memberEnabled","memberDisabled","projectDisabled","profileDisabled"]},
+      {"stories":[67,68,69,70,71],"capabilities":["memberProfile.self.write","memberProfile.admin.write","gameProfile.self.write","gameProfile.admin.write","gameProfile.host.write","room.card.self.write","room.card.host.write","room.view"],"visibleFields":["member.defaultAvatarId","avatarOverrideId","card.avatarId","cards"],"lifecycleRules":["memberDisabled","projectDisabled","profileDisabled","open","credentialInvalid"]},
+      {"stories":[76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92],"capabilities":["room.view","room.host.takeover","room.lifecycle.write","room.delete","room.restore","room.credential.rotate"],"visibleFields":["roomId","revision","status","currentHost","credentialKind","recoveryDeadline"],"lifecycleRules":["open","ended","deleted","credentialInvalid","projectDisabled"]},
+      {"stories":[93,94,95,96,97,98,99,100,101,102,103,104,105,106,107],"capabilities":["room.card.create","room.claim","room.claim.release","room.claim.revoke","room.card.self.write","room.card.host.write","room.team.assign","room.team.capacity.write"],"visibleFields":["cardId","claimState","claimId","card.displayName","teamId","capacity","expectedRevision"],"lifecycleRules":["open","ended","deleted","credentialInvalid"]},
+      {"stories":[108,109,110,111],"capabilities":["room.record.create"],"visibleFields":["recordStatus","snapshot","templateFields","expectedRevision"],"lifecycleRules":["open","ended","deleted","projectDisabled"]},
+      {"stories":[112,113,114,115,116,117,118,119,120],"capabilities":["room.record.maintain"],"visibleFields":["recordStatus","snapshot","templateFields","expectedRevision"],"lifecycleRules":["open","ended","deleted","projectDisabled"]},
+      {"stories":[121,122,123,124,125,126,127,128],"capabilities":["room.view","room.claim","room.claim.release","room.card.create","room.team.assign","room.record.create","room.record.maintain"],"visibleFields":["revision","capabilities","expectedRevision"],"lifecycleRules":["open","ended","deleted","credentialInvalid"]},
+      {"stories":[129,130,131,132,133,134,135,136,137,138,139,140,141,142],"capabilities":["room.view","room.claim","room.team.assign","room.team.capacity.write"],"visibleFields":["revision","teams","cards","capabilities","expectedRevision"],"lifecycleRules":["open","ended","deleted","credentialInvalid"]}
+    ]
   }
 }
