@@ -13,3 +13,6 @@ Thumbs.db
 *.log
 *.tmp
 *.swp
+
+# Root dependencies
+/node_modules/
