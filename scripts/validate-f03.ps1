@@ -22,6 +22,9 @@ if ($roomAccessSessionEntries.Count -ne 1) {
 if ($context.Contains('参与者会话')) {
     throw 'F-03 CONTEXT.md 术语漂移: 旧词“参与者会话”应统一为“房间访问会话”'
 }
+if ($context -match '(?i)participant session') {
+    throw 'F-03 CONTEXT.md 术语漂移: 旧词 participant session 应统一为“房间访问会话”'
+}
 $required = @(
     '# PostgreSQL 持久化模型 v1',
     '## 聚合、稳定标识与修订号',
@@ -234,8 +237,14 @@ foreach ($row in [regex]::Matches($matrixSection.Groups['rows'].Value, '(?m)^\| 
     }
 }
 
+if (-not $spec.Contains('房间访问会话')) {
+    throw 'F-03 设计制品必须使用 CONTEXT.md 已定义的“房间访问会话”'
+}
+if ($spec.Contains('参与者会话')) {
+    throw 'F-03 设计制品术语漂移: 旧词“参与者会话”应统一为“房间访问会话”'
+}
 if ($spec -match '(?i)participant session') {
-    throw 'F-03 术语漂移: participant session 应统一为 CONTEXT.md 已定义的“房间访问会话”'
+    throw 'F-03 设计制品术语漂移: 旧词 participant session 应统一为“房间访问会话”'
 }
 $auditCoverage = @(
     '身份安全事件', '项目创建/改名/停用/恢复', '档案创建/修改/停用/恢复',
@@ -276,21 +285,60 @@ if (-not $SkipNegativeTests) {
             Name = '遗漏项目改名审计'
             Spec = $spec.Replace('项目创建/改名/停用/恢复', '项目创建/停用/恢复')
             Expected = '审计覆盖缺少'
+        },
+        @{
+            Name = '设计重新引入中文旧词'
+            Spec = $spec + "`r`n参与者会话`r`n"
+            Context = $context
+            Expected = '设计制品术语漂移'
+        },
+        @{
+            Name = '设计重新引入英文旧词'
+            Spec = $spec + "`r`nparticipant session`r`n"
+            Context = $context
+            Expected = '设计制品术语漂移'
+        },
+        @{
+            Name = '设计遗漏统一术语'
+            Spec = $spec.Replace('房间访问会话', '访问会话')
+            Context = $context
+            Expected = '设计制品必须使用'
+        },
+        @{
+            Name = 'CONTEXT 重新引入中文旧词'
+            Spec = $spec
+            Context = $context + "`r`n参与者会话`r`n"
+            Expected = 'CONTEXT.md 术语漂移'
+        },
+        @{
+            Name = 'CONTEXT 重新引入英文旧词'
+            Spec = $spec
+            Context = $context + "`r`nparticipant session`r`n"
+            Expected = 'CONTEXT.md 术语漂移'
         }
     )
     foreach ($negative in $negativeVariants) {
+        if (-not $negative.ContainsKey('Context')) {
+            $negative.Context = $context
+        }
         $temporaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ("validate-f03-{0}.md" -f [guid]::NewGuid())
+        $temporaryContextPath = Join-Path ([System.IO.Path]::GetTempPath()) ("validate-f03-context-{0}.md" -f [guid]::NewGuid())
         try {
             [System.IO.File]::WriteAllText(
                 $temporaryPath,
                 $negative.Spec,
                 [System.Text.UTF8Encoding]::new($false)
             )
+            [System.IO.File]::WriteAllText(
+                $temporaryContextPath,
+                $negative.Context,
+                [System.Text.UTF8Encoding]::new($false)
+            )
             $powerShellPath = (Get-Process -Id $PID).Path
             $previousErrorActionPreference = $ErrorActionPreference
             try {
                 $ErrorActionPreference = 'Continue'
-                $output = & $powerShellPath -NoProfile -File $PSCommandPath -SpecPath $temporaryPath -SkipNegativeTests 2>&1 | Out-String
+                $output = & $powerShellPath -NoProfile -File $PSCommandPath -SpecPath $temporaryPath -ContextPath $temporaryContextPath -SkipNegativeTests 2>&1 | Out-String
                 $negativeExitCode = $LASTEXITCODE
             }
             finally {
@@ -303,6 +351,7 @@ if (-not $SkipNegativeTests) {
         }
         finally {
             Remove-Item -LiteralPath $temporaryPath -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $temporaryContextPath -ErrorAction SilentlyContinue
         }
     }
     $global:LASTEXITCODE = 0
