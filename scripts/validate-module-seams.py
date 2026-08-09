@@ -59,8 +59,98 @@ def require(text: str, pattern: str, label: str, failures: list[str]) -> None:
 
 
 def forbid(text: str, pattern: str, label: str, failures: list[str]) -> None:
-    if re.search(pattern, text, re.MULTILINE | re.IGNORECASE):
+    if re.search(pattern, text, re.MULTILINE | re.DOTALL | re.IGNORECASE):
         failures.append(f"出现禁用模式 {label}: /{pattern}/")
+
+
+def section_under_h3(text: str, heading: str) -> str:
+    """Return one exact level-three section, excluding following peers."""
+    match = re.search(
+        rf"^{re.escape(heading)}$.*?(?=^### |\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    return match.group(0) if match else ""
+
+
+def validate_cross_module_scenarios(spec: str, failures: list[str]) -> None:
+    fields = ("事务发起者", "规则所有者", "稳定失败", "统一回滚")
+    for scenario in ("邀请接受", "主持资格保护", "管理员接管", "访客归属", "头像引用切换"):
+        section = section_under_h3(spec, f"### {scenario}")
+        if not section:
+            failures.append(f"缺少 场景 {scenario}")
+            continue
+        positions = []
+        for field in fields:
+            marker = f"**{field}**"
+            position = section.find(marker)
+            if position < 0:
+                failures.append(f"{scenario} 场景缺少字段 {field}")
+            positions.append(position)
+        if all(position >= 0 for position in positions) and positions != sorted(positions):
+            failures.append(f"{scenario} 场景字段顺序错误")
+
+
+def validate_team_reauthentication(spec: str, failures: list[str]) -> None:
+    section = section_under_h3(spec, "### `team` Module")
+    require(
+        section,
+        r"\| 重新鉴权 \|[^\n]*`identity` Interface[^\n]*账号验证",
+        "team 通过 identity Interface 重新鉴权",
+        failures,
+    )
+    forbid(
+        section,
+        r"\| 重新鉴权 \|.*?(?:不得自行|不得直接|不得重新读取).*?账号验证(?:状态)?",
+        "team 越权读取 identity 账号验证状态",
+        failures,
+    )
+
+
+def validate_activity_command_contract(spec: str, failures: list[str]) -> None:
+    section = section_under_h3(spec, "### `activity` Module")
+    requirements = (
+        (r"相同 `commandId`、操作者和请求指纹", "activity 幂等键"),
+        (r"请求指纹[^\n]*payload[^\n]*`expectedRevision`", "activity 请求指纹范围"),
+        (r"重试[^\n]*首次结果", "activity 幂等重试结果"),
+        (r"同一 `commandId`[^\n]*(?:换|不同)操作者[^\n]*`command_reuse_conflict`", "activity 换操作者冲突"),
+        (r"同一 `commandId`[^\n]*(?:换|不同)请求指纹[^\n]*`command_reuse_conflict`", "activity 换请求指纹冲突"),
+        (r"旧[^\n]*`expectedRevision`[^\n]*优先[^\n]*语义 no-op[^\n]*`revision_conflict`", "activity 旧 revision 优先"),
+        (r"合法[^\n]*no-op[^\n]*`changed: false`", "activity 合法 no-op 结果"),
+        (r"`changed: false`[^\n]*不递增[^\n]*revision[^\n]*不[^\n]*`NOTIFY`", "activity no-op 无副作用"),
+        (r"判定顺序[^\n]*commandId[^\n]*操作者[^\n]*请求指纹[^\n]*expectedRevision[^\n]*语义", "activity 稳定判定顺序"),
+    )
+    for pattern, label in requirements:
+        require(section, pattern, label, failures)
+
+
+def assert_negative_controls(spec: str, failures: list[str]) -> None:
+    scenario = section_under_h3(spec, "### 管理员接管")
+    mutated = spec.replace(scenario, scenario.replace("**稳定失败**", "**失败**", 1), 1)
+    observed: list[str] = []
+    validate_cross_module_scenarios(mutated, observed)
+    if "管理员接管 场景缺少字段 稳定失败" not in observed:
+        failures.append("负例失效：删除中间场景字段未被拒绝")
+
+    team = section_under_h3(spec, "### `team` Module")
+    violation = team + "\n不得自行跨行\n重新读取账号验证状态。\n"
+    observed = []
+    validate_team_reauthentication(spec.replace(team, violation, 1), observed)
+    if not any("team 越权读取" in failure for failure in observed):
+        failures.append("负例失效：team 跨行越权措辞未被拒绝")
+
+    activity = section_under_h3(spec, "### `activity` Module")
+    for token, label in (
+        ("请求指纹包含类型化 payload 与 `expectedRevision`", "请求指纹范围"),
+        ("旧 `expectedRevision` 的拒绝优先于语义 no-op", "旧 revision 优先"),
+        ("不递增 revision 且不登记 `NOTIFY`", "no-op 无副作用"),
+    ):
+        if token not in activity:
+            continue
+        observed = []
+        validate_activity_command_contract(spec.replace(token, "", 1), observed)
+        if not any(label in failure for failure in observed):
+            failures.append(f"负例失效：删除 activity {label} 未被拒绝")
 
 
 def parse_story_ranges(value: str) -> set[int]:
@@ -157,14 +247,7 @@ def main() -> int:
         for interface_fact in interface_facts:
             require(section, rf"\| {interface_fact} \|", f"{module} Interface 字段 {interface_fact}", failures)
 
-    for scenario in ("邀请接受", "主持资格保护", "管理员接管", "访客归属", "头像引用切换"):
-        require(spec, rf"^### {scenario}$", f"场景 {scenario}", failures)
-        require(
-            spec,
-            rf"^### {scenario}$.*?\*\*事务发起者\*\*.*?\*\*规则所有者\*\*.*?\*\*稳定失败\*\*.*?\*\*统一回滚\*\*",
-            f"{scenario} 的事务、规则、失败和回滚",
-            failures,
-        )
+    validate_cross_module_scenarios(spec, failures)
 
     for term in ("账号", "成员", "登录会话", "参与者会话", "认领", "团队", "队伍", "房间快照", "对局快照"):
         require(spec, re.escape(term), f"分离术语 {term}", failures)
@@ -200,18 +283,9 @@ def main() -> int:
         failures,
     )
 
-    require(
-        spec,
-        r"### `team` Module.*?\| 重新鉴权 \|[^\n]*`identity` Interface[^\n]*账号验证",
-        "team 通过 identity Interface 重新鉴权",
-        failures,
-    )
-    forbid(
-        spec,
-        r"### `team` Module.*?\| 重新鉴权 \|[^\n]*(自行|直接|重新读取)[^\n]*账号验证",
-        "team 越权读取 identity 账号验证状态",
-        failures,
-    )
+    validate_team_reauthentication(spec, failures)
+    validate_activity_command_contract(spec, failures)
+    assert_negative_controls(spec, failures)
     require(spec, r"### `team` Module.*?\| 稳定失败 \|[^\n]*`binding_conflict`", "team 稳定失败 binding_conflict", failures)
     require(spec, r"### `team` Module.*?\| 稳定失败 \|[^\n]*`profile_conflict`", "team 稳定失败 profile_conflict", failures)
     require(context, r"^\*\*观众会话\*\*:", "CONTEXT.md 术语 观众会话", failures)

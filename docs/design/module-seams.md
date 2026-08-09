@@ -53,6 +53,16 @@
 | 重新鉴权 | 每条写命令和每次快照读取都通过 `identity` Interface 解析当前账号凭据，通过 `team` Interface 取得当前成员、管理员、项目和主持资格事实；参与者会话与观众会话由 `activity` 自行解析，HTTP 侧仅传递原始凭据与目标输入 |
 | 事务参与 | 写命令在调用者传入的 PostgreSQL 工作单元中完成鉴权、规则、状态、一次 revision 递增和事务内失效通知；不提前或单独提交 |
 
+#### MVP-08 命令幂等与并发判定契约
+
+相同 `commandId`、操作者和请求指纹组成幂等键；请求指纹包含类型化 payload 与 `expectedRevision`。完全相同的重试返回首次结果，包括首次的 `changed`、revision、目标结果或稳定失败，不重新执行命令。
+
+同一 `commandId` 换操作者时稳定返回 `command_reuse_conflict`；同一 `commandId` 换请求指纹时同样稳定返回 `command_reuse_conflict`，不得把该 ID 当作新命令执行。
+
+旧 `expectedRevision` 的拒绝优先于语义 no-op，并稳定返回 `revision_conflict`。基于当前 revision 且通过鉴权与领域规则的合法 no-op 返回 `changed: false`；`changed: false` 不递增 revision 且不登记 `NOTIFY`。
+
+稳定判定顺序为：解析 `commandId` → 核对操作者 → 核对请求指纹 → 校验 `expectedRevision` → 鉴权与领域规则 → 判断语义是否改变 → 写入、递增 revision 并登记 `NOTIFY`（仅 `changed: true`）。该顺序是 Interface 契约，不由 Adapter 或调用者改排。
+
 ### `reporting` Module
 
 | 契约 | 冻结内容 |
