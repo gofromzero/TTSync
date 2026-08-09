@@ -634,11 +634,6 @@ export interface components {
             to: string;
             statuses: ("draft" | "confirmed" | "voided")[];
         };
-        OperationResult: {
-            resourceId: string;
-            revision: number;
-            changed: boolean;
-        };
         AvatarUploadRequest: {
             context: string;
             expectedRevision: number;
@@ -646,161 +641,148 @@ export interface components {
             file: string;
         };
         RoomCommand: {
-            /** Format: uuid */
-            roomId: string;
-            /**
-             * Format: uuid
-             * @description 浏览器生成；在房间、操作者及规范化请求指纹范围内幂等。
-             */
-            commandId: string;
-            /** @description 本命令所针对的房间修订号；旧值优先产生 409。 */
-            expectedRevision: number;
             /** @enum {string} */
-            type: "movePlayerCard" | "claimPlayerCard" | "releasePlayerCard" | "setTeamCapacity" | "createPlayerCard" | "createGameRecord" | "updateGameRecord" | "setRoomStatus";
-            /** @description 由 type 对应的 oneOf 分支封闭定义；不得包含鉴权或快照状态。 */
-            payload: Record<string, never>;
-        } & (components["schemas"]["MovePlayerCardCommand"] | components["schemas"]["ClaimPlayerCardCommand"] | components["schemas"]["ReleasePlayerCardCommand"] | components["schemas"]["SetTeamCapacityCommand"] | components["schemas"]["CreatePlayerCardCommand"] | components["schemas"]["CreateGameRecordCommand"] | components["schemas"]["UpdateGameRecordCommand"] | components["schemas"]["SetRoomStatusCommand"]);
-        RoomCommandBase: {
+            type?: "transferHost" | "takeoverHost" | "rotateParticipantCredential" | "rotateSpectatorLink" | "deleteRoom" | "restoreRoom" | "createPlayerCard" | "updatePlayerCard" | "claimPlayerCard" | "releasePlayerCard" | "revokePlayerCardClaim" | "movePlayerCard" | "setTeamCapacity" | "createGameRecord" | "updateGameRecord" | "setRoomStatus";
+        } & (components["schemas"]["TransferHostCommand"] | components["schemas"]["TakeoverHostCommand"] | components["schemas"]["RotateParticipantCredentialCommand"] | components["schemas"]["RotateSpectatorLinkCommand"] | components["schemas"]["DeleteRoomCommand"] | components["schemas"]["RestoreRoomCommand"] | components["schemas"]["CreatePlayerCardCommand"] | components["schemas"]["UpdatePlayerCardCommand"] | components["schemas"]["ClaimPlayerCardCommand"] | components["schemas"]["ReleasePlayerCardCommand"] | components["schemas"]["RevokePlayerCardClaimCommand"] | components["schemas"]["MovePlayerCardCommand"] | components["schemas"]["SetTeamCapacityCommand"] | components["schemas"]["CreateGameRecordCommand"] | components["schemas"]["UpdateGameRecordCommand"] | components["schemas"]["SetRoomStatusCommand"]);
+        MovePlayerCardCommand: {
             /** Format: uuid */
             roomId: string;
             /** Format: uuid */
             commandId: string;
             expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "movePlayerCard";
+            payload: {
+                /** Format: uuid */
+                playerCardId: string;
+                /** Format: uuid */
+                targetTeamId: string | null;
+            };
         };
-        MovePlayerCardCommand: components["schemas"]["PlayerCardTargetCommand"];
-        ClaimPlayerCardCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
+        ClaimPlayerCardCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
             type: "claimPlayerCard";
             payload: {
+                /** Format: uuid */
                 playerCardId: string;
             };
-        } & {
+        };
+        ReleasePlayerCardCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ClaimPlayerCardCommand";
-        };
-        ReleasePlayerCardCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "releasePlayerCard";
             payload: {
+                /** Format: uuid */
                 playerCardId: string;
             };
-        } & {
+        };
+        SetTeamCapacityCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ReleasePlayerCardCommand";
-        };
-        SetTeamCapacityCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "setTeamCapacity";
             payload: {
+                /** Format: uuid */
                 teamId: string;
                 capacity: number;
             };
-        } & {
+        };
+        CreatePlayerCardCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "SetTeamCapacityCommand";
-        };
-        CreatePlayerCardCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "createPlayerCard";
             payload: {
                 /** @enum {string} */
-                kind: "member" | "guest";
-                /** Format: uuid */
-                memberId?: string;
+                source: "member" | "guest";
                 displayName: string;
             };
-        } & {
+        };
+        CreateGameRecordCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "CreatePlayerCardCommand";
-        };
-        CreateGameRecordCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "createGameRecord";
             payload: {
                 /** Format: date-time */
                 playedAt: string;
             };
-        } & {
+        };
+        UpdateGameRecordCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "CreateGameRecordCommand";
-        };
-        UpdateGameRecordCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "updateGameRecord";
             payload: {
+                /** Format: uuid */
                 recordId: string;
                 /** @enum {string} */
-                action: "saveDraft" | "confirm" | "correct" | "void" | "restore";
-                reason?: string;
+                action: "save" | "confirm" | "correct" | "void" | "restore";
+                reason: string | null;
             };
-        } & {
+        };
+        SetRoomStatusCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "UpdateGameRecordCommand";
-        };
-        SetRoomStatusCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
             type: "setRoomStatus";
             payload: {
                 /** @enum {string} */
                 status: "open" | "ended";
             };
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "SetRoomStatusCommand";
-        };
-        PlayerCardTargetCommand: components["schemas"]["RoomCommandBase"] & {
-            /** @constant */
-            type: "movePlayerCard";
-            payload: {
-                playerCardId: string;
-                teamId: string | null;
-            };
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "MovePlayerCardCommand";
         };
         RoomCommandResult: {
-            /** Format: uuid */
-            roomId: string;
-            /** Format: uuid */
-            commandId: string;
-            /** @description false 表示合法无变化或安全重试；不会递增 revision 或发送通知。 */
-            changed: boolean;
-            /** @description 首次命令结果对应的实际房间修订号。 */
-            revision: number;
             /** @enum {string} */
-            type?: "movePlayerCard" | "claimPlayerCard" | "releasePlayerCard" | "setTeamCapacity" | "createPlayerCard" | "createGameRecord" | "updateGameRecord" | "setRoomStatus";
-            /** @description 该命令必要的最小结果；禁止放入完整房间快照。 */
-            result?: {
-                resourceId?: string;
-                /** @enum {string} */
-                status?: "open" | "ended" | "draft" | "confirmed" | "voided";
-            };
-        } & (components["schemas"]["MovePlayerCardResult"] | components["schemas"]["ClaimPlayerCardResult"] | components["schemas"]["ReleasePlayerCardResult"] | components["schemas"]["SetTeamCapacityResult"] | components["schemas"]["CreatePlayerCardResult"] | components["schemas"]["CreateGameRecordResult"] | components["schemas"]["UpdateGameRecordResult"] | components["schemas"]["SetRoomStatusResult"]);
+            type?: "transferHost" | "takeoverHost" | "rotateParticipantCredential" | "rotateSpectatorLink" | "deleteRoom" | "restoreRoom" | "createPlayerCard" | "updatePlayerCard" | "claimPlayerCard" | "releasePlayerCard" | "revokePlayerCardClaim" | "movePlayerCard" | "setTeamCapacity" | "createGameRecord" | "updateGameRecord" | "setRoomStatus";
+        } & (components["schemas"]["TransferHostResult"] | components["schemas"]["TakeoverHostResult"] | components["schemas"]["RotateParticipantCredentialResult"] | components["schemas"]["RotateSpectatorLinkResult"] | components["schemas"]["DeleteRoomResult"] | components["schemas"]["RestoreRoomResult"] | components["schemas"]["CreatePlayerCardResult"] | components["schemas"]["UpdatePlayerCardResult"] | components["schemas"]["ClaimPlayerCardResult"] | components["schemas"]["ReleasePlayerCardResult"] | components["schemas"]["RevokePlayerCardClaimResult"] | components["schemas"]["MovePlayerCardResult"] | components["schemas"]["SetTeamCapacityResult"] | components["schemas"]["CreateGameRecordResult"] | components["schemas"]["UpdateGameRecordResult"] | components["schemas"]["SetRoomStatusResult"]);
         RoomCommandResultBase: {
             /** Format: uuid */
             roomId: string;
@@ -809,121 +791,144 @@ export interface components {
             changed: boolean;
             revision: number;
         };
-        MovePlayerCardResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
+        MovePlayerCardResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
             type: "movePlayerCard";
-            result: Record<string, never>;
-        } & {
+            result: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        ClaimPlayerCardResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "MovePlayerCardResult";
-        };
-        ClaimPlayerCardResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "claimPlayerCard";
-            result: Record<string, never>;
-        } & {
+            result: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        ReleasePlayerCardResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ClaimPlayerCardResult";
-        };
-        ReleasePlayerCardResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "releasePlayerCard";
-            result: Record<string, never>;
-        } & {
+            result: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        SetTeamCapacityResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ReleasePlayerCardResult";
-        };
-        SetTeamCapacityResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "setTeamCapacity";
-            result: Record<string, never>;
-        } & {
+            result: {
+                /** Format: uuid */
+                teamId: string;
+                overCapacityBy: number;
+            };
+        };
+        CreatePlayerCardResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "SetTeamCapacityResult";
-        };
-        CreatePlayerCardResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "createPlayerCard";
             result: {
-                resourceId: string;
+                /** Format: uuid */
+                playerCardId: string;
             };
-        } & {
+        };
+        CreateGameRecordResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "CreatePlayerCardResult";
-        };
-        CreateGameRecordResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "createGameRecord";
             result: {
-                resourceId: string;
+                /** Format: uuid */
+                recordId: string;
             };
-        } & {
+        };
+        UpdateGameRecordResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "CreateGameRecordResult";
-        };
-        UpdateGameRecordResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "updateGameRecord";
             result: {
-                /** @enum {string} */
-                status: "draft" | "confirmed" | "voided";
+                /** Format: uuid */
+                recordId: string;
             };
-        } & {
+        };
+        SetRoomStatusResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "UpdateGameRecordResult";
-        };
-        SetRoomStatusResult: components["schemas"]["RoomCommandResultBase"] & {
-            /** @constant */
             type: "setRoomStatus";
             result: {
                 /** @enum {string} */
-                status: "open" | "ended";
+                state: "open" | "ended";
             };
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "SetRoomStatusResult";
         };
-        RoomSnapshot: {
-            /** Format: uuid */
-            roomId: string;
-            revision: number;
-            /** @enum {string} */
-            role: "host" | "participant" | "spectator";
-            state: components["schemas"]["RoomState"];
-            /** @description 服务端按当前角色和状态计算的能力；客户端不得自行推导权限。 */
-            capabilities: components["schemas"]["RoomCapability"][];
-        } & (components["schemas"]["HostRoomSnapshot"] | components["schemas"]["ParticipantRoomSnapshot"] | components["schemas"]["SpectatorRoomSnapshot"]);
-        RoomState: {
-            /** @enum {string} */
-            status: "open" | "ended";
-            teams: components["schemas"]["RoomTeam"][];
-            playerCards: components["schemas"]["PlayerCard"][];
-            records: components["schemas"]["RoomRecord"][];
-        };
+        RoomSnapshot: components["schemas"]["HostRoomSnapshot"] | components["schemas"]["ParticipantRoomSnapshot"] | components["schemas"]["SpectatorRoomSnapshot"];
         RoomTeam: {
             id: string;
             name: string;
@@ -945,38 +950,54 @@ export interface components {
             /** Format: uuid */
             roomId: string;
             revision: number;
+            /** @enum {string} */
+            status: "open" | "ended";
+            teams: components["schemas"]["RoomTeam"][];
+            playerCards: components["schemas"]["PlayerCard"][];
+            records: components["schemas"]["RoomRecord"][];
+            claims: components["schemas"]["RoomClaim"][];
+            capabilities: components["schemas"]["RoomCapability"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            role: "HostRoomSnapshot";
-            state: components["schemas"]["RoomState"];
-            capabilities: components["schemas"]["RoomCapability"][];
+            role: "host";
+            managementSecrets: components["schemas"]["RoomManagementSecrets"];
         };
         ParticipantRoomSnapshot: {
             /** Format: uuid */
             roomId: string;
             revision: number;
+            /** @enum {string} */
+            status: "open" | "ended";
+            teams: components["schemas"]["RoomTeam"][];
+            playerCards: components["schemas"]["PlayerCard"][];
+            records: components["schemas"]["RoomRecord"][];
+            claims: components["schemas"]["RoomClaim"][];
+            capabilities: components["schemas"]["RoomCapability"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            role: "ParticipantRoomSnapshot";
-            state: components["schemas"]["RoomState"];
-            capabilities: components["schemas"]["RoomCapability"][];
-            claimedPlayerCardId: string | null;
+            role: "participant";
+            participantSession: components["schemas"]["ParticipantSessionView"];
         };
         SpectatorRoomSnapshot: {
             /** Format: uuid */
             roomId: string;
             revision: number;
+            /** @enum {string} */
+            status: "open" | "ended";
+            teams: components["schemas"]["RoomTeam"][];
+            playerCards: components["schemas"]["PlayerCard"][];
+            records: components["schemas"]["RoomRecord"][];
+            claims: components["schemas"]["RoomClaim"][];
+            capabilities: components["schemas"]["RoomCapability"][];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            role: "SpectatorRoomSnapshot";
-            state: components["schemas"]["RoomState"];
-            capabilities: "readRoom"[];
+            role: "spectator";
         };
         Violation: {
             /** @description 指向无效输入的 JSON Pointer。 */
@@ -988,75 +1009,645 @@ export interface components {
             /** Format: uri-reference */
             type: string;
             title: string;
-            status: number;
             detail: string;
             /** Format: uri-reference */
             instance: string;
-            /** @description 程序逻辑使用的稳定错误码；不得解析 detail。 */
-            code: string;
+            /** Format: uuid */
             requestId: string;
-            /** @description revision 冲突时可返回的当前房间修订号。 */
-            currentRevision?: number;
-            violations?: components["schemas"]["Violation"][];
-        } & {
-            [key: string]: unknown;
         };
-        BadRequestProblem: {
-            /** @constant */
-            status?: 400;
-            /** @enum {string} */
-            code?: "MALFORMED_REQUEST";
-        } & components["schemas"]["ProblemDetails"];
         UnauthorizedProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
             /** @constant */
-            status?: 401;
-            /** @enum {string} */
-            code?: "UNAUTHORIZED";
-        } & components["schemas"]["ProblemDetails"];
+            status: 401;
+            /** @constant */
+            code: "UNAUTHORIZED";
+        };
         ForbiddenProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
             /** @constant */
-            status?: 403;
-            /** @enum {string} */
-            code?: "FORBIDDEN";
-        } & components["schemas"]["ProblemDetails"];
-        NotFoundProblem: {
+            status: 403;
             /** @constant */
-            status?: 404;
-            /** @enum {string} */
-            code?: "RESOURCE_NOT_FOUND" | "ROOM_NOT_FOUND";
-        } & components["schemas"]["ProblemDetails"];
-        ConflictProblem: ({
-            /** @constant */
-            status?: 409;
-            /** @enum {string} */
-            code?: "REVISION_CONFLICT" | "IDEMPOTENCY_CONFLICT" | "STATE_CONFLICT";
-            currentRevision?: number;
-        } & components["schemas"]["ProblemDetails"]) & ({
-            /** @constant */
-            code?: "REVISION_CONFLICT";
-        } | {
-            /** @enum {unknown} */
-            code?: "IDEMPOTENCY_CONFLICT" | "STATE_CONFLICT";
-        });
+            code: "FORBIDDEN";
+        };
         ValidationProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
             /** @constant */
-            status?: 422;
-            /** @enum {string} */
-            code?: "VALIDATION_FAILED";
+            status: 422;
+            /** @constant */
+            code: "VALIDATION_FAILED";
             violations: components["schemas"]["Violation"][];
-        } & WithRequired<components["schemas"]["ProblemDetails"], "violations">;
-        RateLimitedProblem: {
-            /** @constant */
-            status?: 429;
-            /** @enum {string} */
-            code?: "RATE_LIMITED";
-        } & components["schemas"]["ProblemDetails"];
+        };
         InternalErrorProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
             /** @constant */
-            status?: 500;
+            status: 500;
+            /** @constant */
+            code: "INTERNAL_ERROR";
+        };
+        RateLimitedProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 429;
+            /** @constant */
+            code: "RATE_LIMITED";
+        };
+        TeamSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        MemberSummary: {
+            /** Format: uuid */
+            id: string;
+            displayName: string;
+            revision: number;
+            enabled: boolean;
+        };
+        InvitationSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            memberId: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        GameProjectSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            enabled: boolean;
+        };
+        GameProfileSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            memberId: string;
+            /** Format: uuid */
+            gameId: string;
+            revision: number;
+        };
+        RecordTemplateSummary: {
+            version: number;
+            fields: components["schemas"]["TemplateField"][];
+        };
+        RoomSummary: {
+            /** Format: uuid */
+            id: string;
+            revision: number;
             /** @enum {string} */
-            code?: "INTERNAL_ERROR";
-        } & components["schemas"]["ProblemDetails"];
+            status: "open" | "ended" | "deleted";
+        };
+        ParticipantSessionSummary: {
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: uuid */
+            roomId: string;
+            credentialGeneration: number;
+        };
+        SpectatorSessionSummary: {
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: uuid */
+            roomId: string;
+            /** Format: date-time */
+            expiresAt: string | null;
+        };
+        HistoryRecord: {
+            /** Format: uuid */
+            recordId: string;
+            roundNumber: number;
+            /** @enum {string} */
+            status: "draft" | "confirmed" | "void";
+        };
+        GameStatistics: {
+            confirmedRecordCount: number;
+            /** Format: date-time */
+            firstPlayedAt: string | null;
+            /** Format: date-time */
+            lastPlayedAt: string | null;
+        };
+        AvatarAsset: {
+            /** Format: uuid */
+            id: string;
+            /** @constant */
+            mediaType: "image/png";
+            width: number;
+            height: number;
+        };
+        RegisterAccountResponse: {
+            /** Format: uuid */
+            accountId: string;
+            verificationRequired: boolean;
+        };
+        ResendVerificationResponse: {
+            accepted: boolean;
+        };
+        VerifyEmailResponse: {
+            verified: boolean;
+        };
+        GetSessionResponse: {
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: email */
+            email: string;
+            emailVerified: boolean;
+        };
+        LoginResponse: {
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        LogoutResponse: {
+            revoked: boolean;
+        };
+        LogoutAllSessionsResponse: {
+            revokedSessionCount: number;
+        };
+        RequestPasswordResetResponse: {
+            accepted: boolean;
+        };
+        ResetPasswordResponse: {
+            sessionsRevoked: boolean;
+        };
+        ChangePasswordResponse: {
+            sessionsRevoked: boolean;
+        };
+        ChangeEmailResponse: {
+            confirmationRequired: boolean;
+        };
+        ListTeamsResponse: {
+            teams: components["schemas"]["TeamSummary"][];
+        };
+        CreateTeamResponse: {
+            team: components["schemas"]["TeamSummary"];
+        };
+        CreateMemberResponse: {
+            member: components["schemas"]["MemberSummary"];
+        };
+        UpdateMemberResponse: {
+            member: components["schemas"]["MemberSummary"];
+        };
+        CreateInvitationResponse: {
+            invitation: components["schemas"]["InvitationSummary"];
+        };
+        AcceptInvitationResponse: {
+            member: components["schemas"]["MemberSummary"];
+        };
+        CreateGameProjectResponse: {
+            game: components["schemas"]["GameProjectSummary"];
+        };
+        UpdateGameProjectResponse: {
+            game: components["schemas"]["GameProjectSummary"];
+        };
+        CreateGameProfileResponse: {
+            profile: components["schemas"]["GameProfileSummary"];
+        };
+        UpdateGameProfileResponse: {
+            profile: components["schemas"]["GameProfileSummary"];
+        };
+        UpdateRecordTemplateResponse: {
+            template: components["schemas"]["RecordTemplateSummary"];
+        };
+        CreateRoomResponse: {
+            room: components["schemas"]["RoomSummary"];
+        };
+        JoinRoomResponse: {
+            participantSession: components["schemas"]["ParticipantSessionSummary"];
+        };
+        JoinRoomAsSpectatorResponse: {
+            spectatorSession: components["schemas"]["SpectatorSessionSummary"];
+        };
+        GetGameHistoryResponse: {
+            records: components["schemas"]["HistoryRecord"][];
+            nextCursor: string | null;
+        };
+        GetGameStatisticsResponse: {
+            statistics: components["schemas"]["GameStatistics"];
+        };
+        UploadAvatarResponse: {
+            avatar: components["schemas"]["AvatarAsset"];
+        };
+        ExecuteRoomCommandResponse: {
+            command: components["schemas"]["RoomCommandResult"];
+        };
+        GetRoomSnapshotResponse: {
+            snapshot: components["schemas"]["RoomSnapshot"];
+        };
+        TransferHostCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "transferHost";
+            payload: {
+                /** Format: uuid */
+                targetMemberId: string;
+            };
+        };
+        TransferHostResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "transferHost";
+            result: {
+                /** Format: uuid */
+                hostMemberId: string;
+            };
+        };
+        TakeoverHostCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "takeoverHost";
+            payload: {
+                /** Format: uuid */
+                administratorMemberId: string;
+            };
+        };
+        TakeoverHostResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "takeoverHost";
+            result: {
+                /** Format: uuid */
+                hostMemberId: string;
+            };
+        };
+        RotateParticipantCredentialCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rotateParticipantCredential";
+            payload: {
+                reason: string;
+            };
+        };
+        RotateParticipantCredentialResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rotateParticipantCredential";
+            result: {
+                credentialGeneration: number;
+            };
+        };
+        RotateSpectatorLinkCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rotateSpectatorLink";
+            payload: {
+                /** @enum {string} */
+                mode: "graceful" | "emergency";
+            };
+        };
+        RotateSpectatorLinkResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "rotateSpectatorLink";
+            result: {
+                /** Format: uri */
+                spectatorUrl: string;
+                /** Format: date-time */
+                previousValidUntil: string | null;
+            };
+        };
+        DeleteRoomCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "deleteRoom";
+            payload: {
+                reason: string;
+            };
+        };
+        DeleteRoomResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "deleteRoom";
+            result: {
+                /** @enum {string} */
+                state: "deleted" | "restored";
+            };
+        };
+        RestoreRoomCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "restoreRoom";
+            payload: Record<string, never>;
+        };
+        RestoreRoomResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "restoreRoom";
+            result: {
+                /** @enum {string} */
+                state: "deleted" | "restored";
+            };
+        };
+        UpdatePlayerCardCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "updatePlayerCard";
+            payload: {
+                /** Format: uuid */
+                playerCardId: string;
+                displayName: string;
+                /** Format: uuid */
+                avatarId: string | null;
+            };
+        };
+        UpdatePlayerCardResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "updatePlayerCard";
+            result: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        RevokePlayerCardClaimCommand: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            expectedRevision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "revokePlayerCardClaim";
+            payload: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        RevokePlayerCardClaimResult: {
+            /** Format: uuid */
+            roomId: string;
+            /** Format: uuid */
+            commandId: string;
+            changed: boolean;
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "revokePlayerCardClaim";
+            result: {
+                /** Format: uuid */
+                playerCardId: string;
+            };
+        };
+        RoomClaim: {
+            /** Format: uuid */
+            playerCardId: string;
+            claimed: boolean;
+            claimedByCurrentParticipant?: boolean;
+        };
+        RoomManagementSecrets: {
+            participantCredentialGeneration: number;
+            spectatorLinkGeneration: number;
+        };
+        ParticipantSessionView: {
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: uuid */
+            claimedPlayerCardId: string | null;
+        };
+        MalformedRequestProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 400;
+            /** @constant */
+            code: "MALFORMED_REQUEST";
+        };
+        ResourceNotFoundProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 404;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "ResourceNotFoundProblem";
+        };
+        RoomNotFoundProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 404;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "RoomNotFoundProblem";
+        };
+        RevisionConflictProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 409;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "RevisionConflictProblem";
+            currentRevision: number;
+        };
+        IdempotencyConflictProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 409;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "IdempotencyConflictProblem";
+        };
+        StateConflictProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 409;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            code: "StateConflictProblem";
+        };
     };
     responses: {
         /** @description 请求语法、JSON 或媒体类型无法解析（400） */
@@ -1074,7 +1665,7 @@ export interface components {
                  *       "code": "MALFORMED_REQUEST",
                  *       "requestId": "req-400"
                  *     } */
-                "application/problem+json": components["schemas"]["BadRequestProblem"];
+                "application/problem+json": components["schemas"]["MalformedRequestProblem"];
             };
         };
         /** @description 访问凭据缺失、无效或过期（401） */
@@ -1128,7 +1719,7 @@ export interface components {
                  *       "code": "ROOM_NOT_FOUND",
                  *       "requestId": "req-404"
                  *     } */
-                "application/problem+json": components["schemas"]["NotFoundProblem"];
+                "application/problem+json": components["schemas"]["ResourceNotFoundProblem"] | components["schemas"]["RoomNotFoundProblem"];
             };
         };
         /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
@@ -1137,7 +1728,7 @@ export interface components {
                 [name: string]: unknown;
             };
             content: {
-                "application/problem+json": components["schemas"]["ConflictProblem"];
+                "application/problem+json": components["schemas"]["RevisionConflictProblem"] | components["schemas"]["IdempotencyConflictProblem"] | components["schemas"]["StateConflictProblem"];
             };
         };
         /** @description 语法可解析但输入不满足合同或领域规则（422） */
@@ -1239,163 +1830,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description registerAccount 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["RegisterAccountResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     resendVerification: {
@@ -1411,163 +1862,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description resendVerification 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["ResendVerificationResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     verifyEmail: {
@@ -1583,163 +1894,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description verifyEmail 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["VerifyEmailResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     getSession: {
@@ -1753,163 +1924,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 操作成功 */
+            /** @description getSession 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["GetSessionResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     login: {
@@ -1925,163 +1956,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description login 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["LoginResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     logout: {
@@ -2097,163 +1988,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description logout 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["LogoutResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     logoutAllSessions: {
@@ -2269,163 +2020,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description logoutAllSessions 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["LogoutAllSessionsResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     requestPasswordReset: {
@@ -2441,163 +2052,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description requestPasswordReset 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["RequestPasswordResetResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     resetPassword: {
@@ -2613,163 +2084,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description resetPassword 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["ResetPasswordResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     changePassword: {
@@ -2785,163 +2116,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description changePassword 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["ChangePasswordResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     changeEmail: {
@@ -2957,163 +2148,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description changeEmail 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["ChangeEmailResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     listTeams: {
@@ -3127,163 +2178,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 操作成功 */
+            /** @description listTeams 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["ListTeamsResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createTeam: {
@@ -3299,163 +2210,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createTeam 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateTeamResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createMember: {
@@ -3473,163 +2244,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createMember 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateMemberResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     updateMember: {
@@ -3648,163 +2279,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description updateMember 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["UpdateMemberResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createInvitation: {
@@ -3822,163 +2313,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createInvitation 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateInvitationResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     acceptInvitation: {
@@ -3996,163 +2347,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description acceptInvitation 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["AcceptInvitationResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createGameProject: {
@@ -4170,163 +2381,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createGameProject 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateGameProjectResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     updateGameProject: {
@@ -4345,163 +2416,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description updateGameProject 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["UpdateGameProjectResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createGameProfile: {
@@ -4520,163 +2451,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createGameProfile 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateGameProfileResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     updateGameProfile: {
@@ -4696,163 +2487,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description updateGameProfile 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["UpdateGameProfileResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     updateRecordTemplate: {
@@ -4871,163 +2522,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description updateRecordTemplate 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["UpdateRecordTemplateResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     createRoom: {
@@ -5043,163 +2554,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description createRoom 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["CreateRoomResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     joinRoom: {
@@ -5217,163 +2588,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description joinRoom 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["JoinRoomResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     joinRoomAsSpectator: {
@@ -5391,163 +2622,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description joinRoomAsSpectator 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["JoinRoomAsSpectatorResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     getGameHistory: {
@@ -5562,163 +2653,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 操作成功 */
+            /** @description getGameHistory 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["GetGameHistoryResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     getGameStatistics: {
@@ -5733,163 +2684,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 操作成功 */
+            /** @description getGameStatistics 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["GetGameStatisticsResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     exportGameRecords: {
@@ -5908,163 +2719,24 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description 直接下载六张 CSV 长表。 */
             200: {
                 headers: {
+                    "Content-Disposition": string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "text/csv": string;
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     uploadAvatar: {
@@ -6080,163 +2752,23 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 操作成功 */
+            /** @description uploadAvatar 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "application/json": components["schemas"]["UploadAvatarResponse"];
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     getAvatar: {
@@ -6253,163 +2785,23 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 操作成功 */
+            /** @description 经资源上下文鉴权后下载不可变 PNG。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationResult"];
+                    "image/png": string;
                 };
             };
-            /** @description 请求语法、JSON 或媒体类型无法解析（400） */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/malformed-request",
-                     *       "title": "请求无法解析",
-                     *       "status": 400,
-                     *       "detail": "JSON 请求体不完整。",
-                     *       "instance": "/problems/req-400",
-                     *       "code": "MALFORMED_REQUEST",
-                     *       "requestId": "req-400"
-                     *     } */
-                    "application/problem+json": components["schemas"]["BadRequestProblem"];
-                };
-            };
-            /** @description 访问凭据缺失、无效或过期（401） */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/unauthorized",
-                     *       "title": "需要有效凭据",
-                     *       "status": 401,
-                     *       "detail": "房间访问凭据缺失或已过期。",
-                     *       "instance": "/problems/req-401",
-                     *       "code": "UNAUTHORIZED",
-                     *       "requestId": "req-401"
-                     *     } */
-                    "application/problem+json": components["schemas"]["UnauthorizedProblem"];
-                };
-            };
-            /** @description 有效身份缺少当前操作权限（403） */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/forbidden",
-                     *       "title": "没有操作权限",
-                     *       "status": 403,
-                     *       "detail": "当前角色没有此 capability。",
-                     *       "instance": "/problems/req-403",
-                     *       "code": "FORBIDDEN",
-                     *       "requestId": "req-403"
-                     *     } */
-                    "application/problem+json": components["schemas"]["ForbiddenProblem"];
-                };
-            };
-            /** @description 资源不存在或对调用者不可见（404） */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/not-found",
-                     *       "title": "房间不可见",
-                     *       "status": 404,
-                     *       "detail": "房间不存在或当前凭据不能查看。",
-                     *       "instance": "/problems/req-404",
-                     *       "code": "ROOM_NOT_FOUND",
-                     *       "requestId": "req-404"
-                     *     } */
-                    "application/problem+json": components["schemas"]["NotFoundProblem"];
-                };
-            };
-            /** @description 版本、幂等指纹/操作者或资源状态冲突（409） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ConflictProblem"];
-                };
-            };
-            /** @description 语法可解析但输入不满足合同或领域规则（422） */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/validation-failed",
-                     *       "title": "输入校验失败",
-                     *       "status": 422,
-                     *       "detail": "两个字段无效。",
-                     *       "instance": "/problems/req-3",
-                     *       "code": "VALIDATION_FAILED",
-                     *       "requestId": "req-3",
-                     *       "violations": [
-                     *         {
-                     *           "path": "/commandId",
-                     *           "code": "INVALID_UUID",
-                     *           "message": "必须是 UUID。"
-                     *         },
-                     *         {
-                     *           "path": "/expectedRevision",
-                     *           "code": "OUT_OF_RANGE",
-                     *           "message": "必须大于或等于 0。"
-                     *         }
-                     *       ]
-                     *     } */
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
-                };
-            };
-            /** @description 请求超过限速（429）；调用者应遵循 Retry-After */
-            429: {
-                headers: {
-                    "Retry-After": string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/rate-limited",
-                     *       "title": "请求过于频繁",
-                     *       "status": 429,
-                     *       "detail": "请在 Retry-After 指定时间后重试。",
-                     *       "instance": "/problems/req-429",
-                     *       "code": "RATE_LIMITED",
-                     *       "requestId": "req-429"
-                     *     } */
-                    "application/problem+json": components["schemas"]["RateLimitedProblem"];
-                };
-            };
-            /** @description 未预期的服务端失败（500） */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /** @example {
-                     *       "type": "https://ttsync.example/problems/internal-error",
-                     *       "title": "服务暂时失败",
-                     *       "status": 500,
-                     *       "detail": "请求未能完成，请使用 requestId 联系维护者。",
-                     *       "instance": "/problems/req-500",
-                     *       "code": "INTERNAL_ERROR",
-                     *       "requestId": "req-500"
-                     *     } */
-                    "application/problem+json": components["schemas"]["InternalErrorProblem"];
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalServerError"];
         };
     };
     executeRoomCommand: {
@@ -6427,13 +2819,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 命令成功或安全重试成功；不包含完整快照 */
+            /** @description executeRoomCommand 专属成功结果。 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoomCommandResult"];
+                    "application/json": components["schemas"]["ExecuteRoomCommandResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -6457,14 +2849,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 完整角色化快照。Cache-Control 固定 no-store；Caddy、浏览器缓存或条件读取 不得复用此响应完成恢复。 */
+            /** @description 按当前角色返回完整快照；Caddy、浏览器缓存和条件读取均不得作为恢复机制。 */
             200: {
                 headers: {
                     "Cache-Control": "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoomSnapshot"];
+                    "application/json": components["schemas"]["GetRoomSnapshotResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -6491,22 +2883,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description UTF-8 事件流。事件名 room-invalidation，id 等于 revision，建议 retry 为 3000ms；每 15 秒写入 `: heartbeat` 注释并立即 flush。心跳只保活和暴露断线。 data 只含 roomId/revision；收到提示、初连或重连后读取完整快照，此流不承载可靠历史。 */
+            /** @description 先订阅再读取当前 revision；通知不提供历史，初连与重连均读取完整快照校准。 */
             200: {
                 headers: {
-                    "Cache-Control": "no-store";
                     [name: string]: unknown;
                 };
                 content: {
-                    /** @example retry: 3000
-                     *
-                     *     : heartbeat
-                     *
-                     *     event: room-invalidation
-                     *     id: 9
-                     *     data: {"roomId":"018f5f1e-17d8-7a38-94d0-ecf3184ccf23","revision":9} */
                     "text/event-stream": string;
                 };
+            };
+            /** @description 房间删除、不可见或访问不可恢复时返回；EventSource 将停止自动重连。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
@@ -6519,6 +2910,3 @@ export interface operations {
         };
     };
 }
-type WithRequired<T, K extends keyof T> = T & {
-    [P in K]-?: T[P];
-};
