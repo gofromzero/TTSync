@@ -156,6 +156,18 @@ const rejectionCases = [
   ["F-O environment 禁止额外字段", /\[schema\]/, (value) => { value.fixtures["F-O"].environment.untrackedService = true; }],
   ["MVP 必须按编号排序", /\[schema\]/, (value) => { [value.mvps[0], value.mvps[1]] = [value.mvps[1], value.mvps[0]]; }],
   ["图片类别必须使用固定枚举", /\[schema\]/, (value) => { value.fixtures["F-F"].imageCases[0].category = "future-image-category"; }],
+  ...[
+    ["合法 JPEG", 0],
+    ["合法 PNG", 1],
+    ["伪装图片", 2],
+    ["动态图片", 3],
+    ["尺寸超限图片", 6],
+    ["像素超限图片", 7]
+  ].flatMap(([categoryName, index]) => ["width", "height", "frames"].map((field) => [
+    `${categoryName}必须包含 ${field}`,
+    new RegExp(`\\[schema\\].*must have required property '${field}'`),
+    (value) => { delete value.fixtures["F-F"].imageCases[index][field]; }
+  ])),
   ["测试客户端上限由 schema 执行", /\[schema\]/, (value) => { value.fixtures["F-O"].clients.push("CLIENT-21"); }],
   ["重复故事 owner", /\[story-owner\]/, (value) => value.mvps[2].ownedStories.push(7)],
   ["未知 account 引用", /\[reference:account\]/, (value) => { value.fixtures["F-I"].sessions[0].account = "ACCOUNT-UNKNOWN"; }],
