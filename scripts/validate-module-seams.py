@@ -29,7 +29,7 @@ ACTIVITY_COMMAND_ORDER = (
     "解析 `commandId`",
     "核对操作者并拒绝复用冲突",
     "核对请求指纹并拒绝复用冲突",
-    "命中相同幂等键时返回首次记录结果",
+    "命中相同幂等键时返回首次已提交成功结果",
     "校验 `expectedRevision`",
     "重新鉴权身份与权限",
     "校验领域规则",
@@ -127,12 +127,16 @@ def validate_activity_command_contract(spec: str, failures: list[str]) -> None:
     requirements = (
         (r"相同 `commandId`、操作者和请求指纹", "activity 幂等键"),
         (r"请求指纹[^\n]*payload[^\n]*`expectedRevision`", "activity 请求指纹范围"),
-        (r"重试[^\n]*首次结果", "activity 幂等重试结果"),
+        (r"重放[^\n]*首次成功结果", "activity 幂等重试结果"),
         (r"同一 `commandId`[^\n]*(?:换|不同)操作者[^\n]*`command_reuse_conflict`", "activity 换操作者冲突"),
         (r"同一 `commandId`[^\n]*(?:换|不同)请求指纹[^\n]*`command_reuse_conflict`", "activity 换请求指纹冲突"),
         (r"旧[^\n]*`expectedRevision`[^\n]*优先[^\n]*语义 no-op[^\n]*`revision_conflict`", "activity 旧 revision 优先"),
         (r"合法[^\n]*no-op[^\n]*`changed: false`", "activity 合法 no-op 结果"),
         (r"`changed: false`[^\n]*不递增[^\n]*revision[^\n]*不[^\n]*`NOTIFY`", "activity no-op 无副作用"),
+        (r"只有已提交成功命令[^\n]*`commandId`[^\n]*操作者[^\n]*请求指纹[^\n]*重放[^\n]*首次成功结果", "activity 只重放已提交成功结果"),
+        (r"失败[^\n]*整体回滚[^\n]*命令结果[^\n]*占位[^\n]*不持久化", "activity 失败不持久化结果或占位"),
+        (r"失败[^\n]*后续重试[^\n]*重新[^\n]*鉴权[^\n]*版本[^\n]*领域规则", "activity 失败重试重新判定"),
+        (r"没有已提交成功[^\n]*ledger[^\n]*不[^\n]*`command_reuse_conflict`", "activity 无成功 ledger 不制造复用冲突"),
     )
     for pattern, label in requirements:
         require(section, pattern, label, failures)
@@ -148,10 +152,16 @@ def validate_activity_command_contract(spec: str, failures: list[str]) -> None:
         )
     require(
         section,
-        r"任一步失败[^\n]*应用编排[^\n]*统一回滚[^\n]*不记录命令结果",
+        r"(?:任一步|任何)失败[^\n]*(?:应用编排[^\n]*统一回滚|整体回滚)[^\n]*命令结果[^\n]*不持久化",
         "activity 失败统一回滚且不记录结果",
         failures,
     )
+    for pattern, label in (
+        (r"失败[^\n]*(?:结果)?重放|重放[^\n]*失败(?:结果)?", "activity 重放失败结果"),
+        (r"(?:记录|持久化)失败(?:结果|命令结果|\s*ledger)|失败(?:结果|命令结果|\s*ledger)(?:被)?(?:记录|持久化)", "activity 记录失败 ledger"),
+        (r"失败[^\n]*(?:保留|持久化)[^\n]*(?:占位|placeholder)", "activity 失败后保留占位"),
+    ):
+        forbid(section, pattern, label, failures)
 
 
 def assert_negative_controls(spec: str, failures: list[str]) -> None:
@@ -174,6 +184,10 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
         ("请求指纹包含类型化 payload 与 `expectedRevision`", "请求指纹范围"),
         ("旧 `expectedRevision` 的拒绝优先于语义 no-op", "旧 revision 优先"),
         ("不递增 revision 且不登记 `NOTIFY`", "no-op 无副作用"),
+        ("只有已提交成功命令", "只重放已提交成功结果"),
+        ("命令结果与占位均不持久化", "失败不持久化结果或占位"),
+        ("后续重试重新走鉴权、版本与领域规则", "失败重试重新判定"),
+        ("不制造 `command_reuse_conflict`", "无成功 ledger 不制造复用冲突"),
     ):
         if token not in activity:
             continue
@@ -215,6 +229,18 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
         validate_activity_command_contract(spec.replace(rollback, "", 1), observed)
         if not any("activity 失败统一回滚" in failure for failure in observed):
             failures.append("负例失效：删除 activity 统一回滚约束未被拒绝")
+
+    for violation, label in (
+        ("失败结果重放。", "activity 重放失败结果"),
+        ("记录失败 ledger。", "activity 记录失败 ledger"),
+        ("失败后保留占位。", "activity 失败后保留占位"),
+    ):
+        observed = []
+        validate_activity_command_contract(
+            spec.replace(activity, activity + "\n" + violation, 1), observed
+        )
+        if not any(label in failure for failure in observed):
+            failures.append(f"负例失效：{label} 未被拒绝")
 
 
 def parse_story_ranges(value: str) -> set[int]:

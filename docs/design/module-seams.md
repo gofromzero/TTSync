@@ -55,15 +55,15 @@
 
 #### MVP-08 命令幂等与并发判定契约
 
-相同 `commandId`、操作者和请求指纹组成幂等键；请求指纹包含类型化 payload 与 `expectedRevision`。完全相同的重试返回首次结果，包括首次的 `changed`、revision、目标结果或稳定失败，不重新执行命令。
+相同 `commandId`、操作者和请求指纹组成幂等键；请求指纹包含类型化 payload 与 `expectedRevision`。只有已提交成功命令的 `commandId`、操作者和请求指纹可以命中幂等重放，并返回首次成功结果，包括首次成功的 `changed`、revision 与目标结果，不重新执行命令。
 
 同一 `commandId` 换操作者时稳定返回 `command_reuse_conflict`；同一 `commandId` 换请求指纹时同样稳定返回 `command_reuse_conflict`，不得把该 ID 当作新命令执行。
 
 旧 `expectedRevision` 的拒绝优先于语义 no-op，并稳定返回 `revision_conflict`。基于当前 revision 且通过鉴权与领域规则的合法 no-op 返回 `changed: false`；`changed: false` 不递增 revision 且不登记 `NOTIFY`。
 
-完整判定顺序为：解析 `commandId` → 核对操作者并拒绝复用冲突 → 核对请求指纹并拒绝复用冲突 → 命中相同幂等键时返回首次记录结果 → 校验 `expectedRevision` → 重新鉴权身份与权限 → 校验领域规则 → 判断语义是否改变 → 写入状态 → 递增 revision → 登记 `NOTIFY` → 记录命令结果 → 由应用编排统一提交。
+完整判定顺序为：解析 `commandId` → 核对操作者并拒绝复用冲突 → 核对请求指纹并拒绝复用冲突 → 命中相同幂等键时返回首次已提交成功结果 → 校验 `expectedRevision` → 重新鉴权身份与权限 → 校验领域规则 → 判断语义是否改变 → 写入状态 → 递增 revision → 登记 `NOTIFY` → 记录命令结果 → 由应用编排统一提交。
 
-仅 `changed: true` 执行写入状态、递增 revision 与登记 `NOTIFY`；合法 no-op 仍记录其首次命令结果。任一步失败均由应用编排统一回滚且不记录命令结果。该顺序是 Interface 契约，不由 Adapter 或调用者改排。
+仅 `changed: true` 执行写入状态、递增 revision 与登记 `NOTIFY`；合法 no-op 仍记录其首次命令结果。任何失败均整体回滚，命令结果与占位均不持久化；失败后的后续重试重新走鉴权、版本与领域规则，没有已提交成功的 ledger 时不以旧失败制造 `command_reuse_conflict`。该顺序是 Interface 契约，不由 Adapter 或调用者改排。
 
 ### `reporting` Module
 
