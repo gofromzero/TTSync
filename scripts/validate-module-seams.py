@@ -223,11 +223,16 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
                     f"负例失效：交换 activity 判定步骤 {index + 1}/{index + 2} 未被拒绝"
                 )
 
-    rollback = "任一步失败均由应用编排统一回滚且不记录命令结果"
-    if rollback in activity:
+    rollback = "任何失败均整体回滚，命令结果与占位均不持久化"
+    if rollback not in activity:
+        failures.append("负例失效：缺少 activity 统一回滚约束变异锚点")
+    else:
         observed = []
         validate_activity_command_contract(spec.replace(rollback, "", 1), observed)
-        if not any("activity 失败统一回滚" in failure for failure in observed):
+        if not any(
+            "activity 失败统一回滚且不记录结果" in failure
+            for failure in observed
+        ):
             failures.append("负例失效：删除 activity 统一回滚约束未被拒绝")
 
     for violation, label in (
