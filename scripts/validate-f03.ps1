@@ -269,10 +269,22 @@ if (-not $SkipNegativeTests) {
     foreach ($negative in $negativeVariants) {
         $temporaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ("validate-f03-{0}.md" -f [guid]::NewGuid())
         try {
-            Set-Content -LiteralPath $temporaryPath -Value $negative.Spec -Encoding utf8NoBOM
+            [System.IO.File]::WriteAllText(
+                $temporaryPath,
+                $negative.Spec,
+                [System.Text.UTF8Encoding]::new($false)
+            )
             $powerShellPath = (Get-Process -Id $PID).Path
-            $output = & $powerShellPath -NoProfile -File $PSCommandPath -SpecPath $temporaryPath -SkipNegativeTests 2>&1 | Out-String
-            if ($LASTEXITCODE -eq 0 -or -not $output.Contains($negative.Expected)) {
+            $previousErrorActionPreference = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $output = & $powerShellPath -NoProfile -File $PSCommandPath -SpecPath $temporaryPath -SkipNegativeTests 2>&1 | Out-String
+                $negativeExitCode = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $previousErrorActionPreference
+            }
+            if ($negativeExitCode -eq 0 -or -not $output.Contains($negative.Expected)) {
                 throw "F-03 破坏性负例未按预期失败: $($negative.Name)"
             }
             Write-Output "F-03 破坏性负例通过: $($negative.Name)"
