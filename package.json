@@ -1,0 +1,7 @@
+{
+  "name": "ttsync-specifications",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/validate-mvp-acceptance.mjs"
+  }
+}
