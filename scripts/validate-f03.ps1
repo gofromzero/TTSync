@@ -1,5 +1,6 @@
 param(
     [string]$SpecPath = (Join-Path $PSScriptRoot '..\docs\architecture\postgresql-model-v1.md'),
+    [string]$ContextPath = (Join-Path $PSScriptRoot '..\CONTEXT.md'),
     [switch]$SkipNegativeTests
 )
 
@@ -8,8 +9,19 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $SpecPath)) {
     throw "F-03 设计制品不存在: $SpecPath"
 }
+if (-not (Test-Path -LiteralPath $ContextPath)) {
+    throw "F-03 领域语言文件不存在: $ContextPath"
+}
 
 $spec = Get-Content -Raw -LiteralPath $SpecPath
+$context = Get-Content -Raw -LiteralPath $ContextPath
+$roomAccessSessionEntries = [regex]::Matches($context, '(?m)^\*\*房间访问会话\*\*:\r?$')
+if ($roomAccessSessionEntries.Count -ne 1) {
+    throw ('F-03 CONTEXT.md 必须且只能定义一个“房间访问会话”词条，当前为 {0}' -f $roomAccessSessionEntries.Count)
+}
+if ($context.Contains('参与者会话')) {
+    throw 'F-03 CONTEXT.md 术语漂移: 旧词“参与者会话”应统一为“房间访问会话”'
+}
 $required = @(
     '# PostgreSQL 持久化模型 v1',
     '## 聚合、稳定标识与修订号',
