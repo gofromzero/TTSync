@@ -19,7 +19,18 @@
       "minProperties": 1,
       "additionalProperties": { "$ref": "#/$defs/capability" }
     },
-    "fieldVisibilityRules": { "type": "object", "required": ["neverInSnapshot", "hostOnly", "participantOnly", "spectator", "rule"] },
+    "fieldVisibilityRules": {
+      "type": "object",
+      "required": ["neverInSnapshot", "hostOnly", "participantOnly", "spectator", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "neverInSnapshot": { "$ref": "#/$defs/fieldNames" },
+        "hostOnly": { "$ref": "#/$defs/fieldNames" },
+        "participantOnly": { "$ref": "#/$defs/fieldNames" },
+        "spectator": { "$ref": "#/$defs/fieldNames" },
+        "rule": { "type": "string", "minLength": 1 }
+      }
+    },
     "responsive": { "type": "object", "required": ["viewports", "layouts", "roles"] },
     "stateDefinitions": { "type": "object", "minProperties": 10 },
     "transitions": { "type": "array", "items": { "type": "object", "required": ["id", "from", "trigger", "to", "effect"] } },
@@ -27,6 +38,7 @@
     "traceability": { "$ref": "#/$defs/traceability" }
   },
   "$defs": {
+    "fieldNames": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
     "capability": {
       "type": "object",
       "required": ["kind", "serverCapability", "decisions", "control", "visibleFields", "stories", "lifecycle"],

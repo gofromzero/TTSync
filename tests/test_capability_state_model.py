@@ -83,16 +83,60 @@ class CapabilityStateModelContractTest(unittest.TestCase):
             self.assertTrue(trace["visibleFields"])
             self.assertTrue(trace["lifecycleRules"])
 
+    def test_traceability_requires_mvp_10_and_story_capability_semantic_matches(self):
+        self.assertIn("MVP-10", self.model["traceability"]["mvp"])
+        traces = self.model["traceability"]["storyTrace"]
+        room_lifecycle_trace = next(trace for trace in traces if 76 in trace["stories"])
+        self.assertIn("room.create", room_lifecycle_trace["capabilities"])
+        self.assertIn("room.host.transfer", room_lifecycle_trace["capabilities"])
+        self.assertIn(76, self.model["capabilities"]["room.create"]["stories"])
+        self.assertIn(77, self.model["capabilities"]["room.create"]["stories"])
+        self.assertIn(79, self.model["capabilities"]["room.host.transfer"]["stories"])
+        missing_mvp = copy.deepcopy(self.model)
+        missing_mvp["traceability"]["mvp"].remove("MVP-10")
+        self.assertTrue(any(
+            "MVP-10" in error
+            for error in self.validator.validate_model(missing_mvp)
+        ))
+
+        wrong_story = copy.deepcopy(self.model)
+        wrong_story["traceability"]["storyTrace"][0]["stories"] = [76]
+        errors = self.validator.validate_model(wrong_story)
+        self.assertTrue(any(
+            "故事 76 未命中引用 capability.stories" in error
+            for error in errors
+        ), errors)
+
+        wrong_fields = copy.deepcopy(self.model)
+        wrong_fields["traceability"]["storyTrace"][0]["visibleFields"] = ["roomId"]
+        errors = self.validator.validate_model(wrong_fields)
+        self.assertTrue(any("visibleFields 与引用 capability 不一致" in error for error in errors), errors)
+
+        wrong_lifecycle = copy.deepcopy(self.model)
+        wrong_lifecycle["traceability"]["storyTrace"][0]["lifecycleRules"] = ["open"]
+        errors = self.validator.validate_model(wrong_lifecycle)
+        self.assertTrue(any("lifecycleRules 与引用 capability 不一致" in error for error in errors), errors)
+
     def test_profile_disabled_blocks_all_game_profile_writes(self):
-        for capability_id in (
-            "gameProfile.self.write",
-            "gameProfile.admin.write",
-            "gameProfile.host.write",
-        ):
+        for capability_id, capability in self.model["capabilities"].items():
+            if capability["kind"] != "write" or not capability_id.startswith("gameProfile."):
+                continue
             self.assertEqual(
                 "deny",
-                self.model["capabilities"][capability_id]["lifecycle"]["profileDisabled"],
+                capability["lifecycle"]["profileDisabled"],
             )
+
+        invalid = copy.deepcopy(self.model)
+        invalid["capabilities"]["gameProfile.future.write"] = copy.deepcopy(
+            invalid["capabilities"]["gameProfile.self.write"]
+        )
+        invalid["capabilities"]["gameProfile.future.write"]["serverCapability"] = "gameProfile.future.write"
+        del invalid["capabilities"]["gameProfile.future.write"]["lifecycle"]["profileDisabled"]
+        errors = self.validator.validate_model(invalid)
+        self.assertTrue(any(
+            "gameProfile.future.write: profileDisabled 必须为 deny" in error
+            for error in errors
+        ), errors)
 
     def test_record_creation_and_existing_record_maintenance_are_separate(self):
         create = self.model["capabilities"]["room.record.create"]
@@ -100,6 +144,34 @@ class CapabilityStateModelContractTest(unittest.TestCase):
         self.assertEqual("deny", create["lifecycle"]["projectDisabled"])
         self.assertEqual("allow", maintain["lifecycle"]["projectDisabled"])
         self.assertNotIn("room.record.write", self.model["capabilities"])
+
+        missing = copy.deepcopy(self.model)
+        del missing["capabilities"]["room.record.maintain"]
+        errors = self.validator.validate_model(missing)
+        self.assertTrue(any("必须同时存在" in error for error in errors), errors)
+
+        reversed_model = copy.deepcopy(self.model)
+        reversed_model["capabilities"]["room.record.create"]["lifecycle"]["projectDisabled"] = "allow"
+        reversed_model["capabilities"]["room.record.maintain"]["lifecycle"]["projectDisabled"] = "deny"
+        errors = self.validator.validate_model(reversed_model)
+        self.assertTrue(any("room.record.create: projectDisabled 必须为 deny" in error for error in errors), errors)
+        self.assertTrue(any("room.record.maintain: projectDisabled 必须为 allow" in error for error in errors), errors)
+
+    def test_field_visibility_schema_and_semantics_are_strict(self):
+        invalid_type = copy.deepcopy(self.model)
+        invalid_type["fieldVisibilityRules"]["hostOnly"] = "cards"
+        errors = self.validator.validate_model(invalid_type)
+        self.assertTrue(any("fieldVisibilityRules.hostOnly" in error and "类型必须为 array" in error for error in errors), errors)
+
+        extra = copy.deepcopy(self.model)
+        extra["fieldVisibilityRules"]["future"] = []
+        errors = self.validator.validate_model(extra)
+        self.assertTrue(any("fieldVisibilityRules" in error and "不允许字段 future" in error for error in errors), errors)
+
+        mismatch = copy.deepcopy(self.model)
+        mismatch["fieldVisibilityRules"]["hostOnly"].append("claimState")
+        errors = self.validator.validate_model(mismatch)
+        self.assertTrue(any("fieldVisibilityRules.hostOnly 与 capability 可见角色不一致" in error for error in errors), errors)
 
     def test_realtime_transitions_reject_regression_and_automatic_replay(self):
         transitions = {item["id"]: item for item in self.model["transitions"]}

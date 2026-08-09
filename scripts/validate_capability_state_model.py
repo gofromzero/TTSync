@@ -24,6 +24,7 @@ TRANSITIONS = {
 }
 OPERATIONS = {"claim", "release", "move", "withdraw", "resizeCapacity", "resolveConflict"}
 REQUIRED_STORIES = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 143))
+REQUIRED_MVPS = {f"MVP-{number:02d}" for number in range(3, 12)}
 
 
 def _schema_type_matches(value, expected):
@@ -130,8 +131,62 @@ def validate_model(model):
         unknown_lifecycle = set(capability.get("lifecycle", {})) - lifecycle_names
         if unknown_lifecycle:
             errors.append(f"{capability_id}: 非法 lifecycle 引用 {sorted(unknown_lifecycle)}")
+        if capability_id.startswith("gameProfile.") and capability.get("kind") == "write":
+            if capability.get("lifecycle", {}).get("profileDisabled") != "deny":
+                errors.append(f"{capability_id}: profileDisabled 必须为 deny")
+
+    create = capabilities.get("room.record.create")
+    maintain = capabilities.get("room.record.maintain")
+    if create is None or maintain is None:
+        errors.append("room.record.create 与 room.record.maintain 必须同时存在")
+    else:
+        if create.get("lifecycle", {}).get("projectDisabled") != "deny":
+            errors.append("room.record.create: projectDisabled 必须为 deny")
+        if maintain.get("lifecycle", {}).get("projectDisabled") != "allow":
+            errors.append("room.record.maintain: projectDisabled 必须为 allow")
+
+    visibility = model.get("fieldVisibilityRules", {})
+    capability_fields = {
+        field for capability in capabilities.values()
+        for field in capability.get("visibleFields", [])
+    }
+    for group in ("hostOnly", "participantOnly", "spectator"):
+        unknown = set(visibility.get(group, [])) - capability_fields
+        if unknown:
+            errors.append(f"fieldVisibilityRules.{group} 与 capability 字段不一致 {sorted(unknown)}")
+    visibility_actor_rules = {
+        "hostOnly": lambda decisions: (
+            decisions.get("currentHost") == "allow"
+            and decisions.get("claimingParticipant") == "deny"
+            and decisions.get("otherParticipant") == "deny"
+            and decisions.get("spectator") == "deny"
+        ),
+        "participantOnly": lambda decisions: (
+            (decisions.get("claimingParticipant") == "allow"
+             or decisions.get("otherParticipant") == "allow")
+            and decisions.get("spectator") == "deny"
+        ),
+        "spectator": lambda decisions: decisions.get("spectator") == "allow",
+    }
+    for group, actor_rule in visibility_actor_rules.items():
+        mismatched = {
+            field for field in visibility.get(group, [])
+            if not any(
+                field in capability.get("visibleFields", [])
+                and actor_rule(capability.get("decisions", {}))
+                for capability in capabilities.values()
+            )
+        }
+        if mismatched:
+            errors.append(f"fieldVisibilityRules.{group} 与 capability 可见角色不一致 {sorted(mismatched)}")
+    leaked = set(visibility.get("neverInSnapshot", [])) & capability_fields
+    if leaked:
+        errors.append(f"fieldVisibilityRules.neverInSnapshot 出现在 capability 字段中 {sorted(leaked)}")
 
     traced_stories = set(model.get("traceability", {}).get("stories", []))
+    missing_mvps = REQUIRED_MVPS - set(model.get("traceability", {}).get("mvp", []))
+    if missing_mvps:
+        errors.append(f"缺少 Issue #28 MVP 追踪 {sorted(missing_mvps)}")
     missing_stories = REQUIRED_STORIES - traced_stories
     if missing_stories:
         errors.append(f"缺少 Issue #28 故事追踪 {sorted(missing_stories)}")
@@ -145,14 +200,15 @@ def validate_model(model):
             errors.append(f"storyTrace[{index}]: 无效 capability 引用 {sorted(unknown)}")
             continue
         referenced_models = [capabilities[item] for item in referenced]
+        for story in trace.get("stories", []):
+            if not any(story in item.get("stories", []) for item in referenced_models):
+                errors.append(f"storyTrace[{index}]: 故事 {story} 未命中引用 capability.stories")
         fields = {field for item in referenced_models for field in item.get("visibleFields", [])}
-        unknown_fields = set(trace.get("visibleFields", [])) - fields
-        if unknown_fields:
-            errors.append(f"storyTrace[{index}]: 无效 visibleFields 引用 {sorted(unknown_fields)}")
+        if set(trace.get("visibleFields", [])) != fields:
+            errors.append(f"storyTrace[{index}]: visibleFields 与引用 capability 不一致")
         lifecycle_rules = {state for item in referenced_models for state in item.get("lifecycle", {})}
-        unknown_rules = set(trace.get("lifecycleRules", [])) - lifecycle_rules
-        if unknown_rules:
-            errors.append(f"storyTrace[{index}]: 无效 lifecycleRules 引用 {sorted(unknown_rules)}")
+        if set(trace.get("lifecycleRules", [])) != lifecycle_rules:
+            errors.append(f"storyTrace[{index}]: lifecycleRules 与引用 capability 不一致")
     if mapped_stories != traced_stories:
         errors.append("storyTrace 必须逐项且仅覆盖 traceability.stories")
 
