@@ -38,7 +38,30 @@ class CapabilityStateModelContractTest(unittest.TestCase):
         self.assertEqual("allow", view["decisions"]["teamAdminViewer"])
         self.assertEqual("deny", mutate["decisions"]["teamAdminViewer"])
         self.assertEqual("allow", mutate["decisions"]["currentHost"])
-        self.assertEqual("room.host.takeover", mutate["requiresCapability"])
+        self.assertNotIn("requiresCapability", mutate)
+
+    def test_capability_dependencies_are_reachable_for_every_allowed_actor(self):
+        invalid = copy.deepcopy(self.model)
+        invalid["capabilities"]["room.card.create"]["requiresCapability"] = "room.host.takeover"
+        errors = self.validator.validate_model(invalid)
+        self.assertTrue(any(
+            "room.card.create: actor currentHost 无法满足 capability 依赖 room.host.takeover"
+            in error for error in errors
+        ), errors)
+
+        cyclic = copy.deepcopy(self.model)
+        cyclic["capabilities"]["room.host.takeover"]["requiresCapability"] = "room.delete"
+        cyclic["capabilities"]["room.delete"]["requiresCapability"] = "room.host.takeover"
+        errors = self.validator.validate_model(cyclic)
+        self.assertTrue(any("capability 依赖循环" in error for error in errors), errors)
+
+        unknown = copy.deepcopy(self.model)
+        unknown["capabilities"]["room.claim"]["requiresCapability"] = "room.missing"
+        errors = self.validator.validate_model(unknown)
+        self.assertTrue(any(
+            "room.claim: 不可达 capability 依赖 room.missing" in error
+            for error in errors
+        ), errors)
 
     def test_responsive_and_lifecycle_state_coverage_is_frozen(self):
         self.assertEqual(
@@ -53,8 +76,52 @@ class CapabilityStateModelContractTest(unittest.TestCase):
             self.assertTrue(required.issubset(self.model["responsive"]["roles"][role]))
 
     def test_issue_story_range_is_traceable(self):
-        required = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 143))
+        required = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 154))
         self.assertTrue(required.issubset(self.model["traceability"]["stories"]))
+
+    def test_validator_requires_every_mvp_10_story_and_reporting_capability(self):
+        for story in range(143, 154):
+            with self.subTest(story=story):
+                invalid = copy.deepcopy(self.model)
+                invalid["traceability"]["stories"].remove(story)
+                errors = self.validator.validate_model(invalid)
+                self.assertTrue(any(
+                    f"缺少 Issue #28 故事追踪 [{story}]" in error
+                    for error in errors
+                ), errors)
+
+        for capability_id in (
+            "reporting.history.read",
+            "reporting.statistics.read",
+            "reporting.roomRecordSummary.read",
+            "reporting.export.csv",
+        ):
+            with self.subTest(capability=capability_id):
+                invalid = copy.deepcopy(self.model)
+                del invalid["capabilities"][capability_id]
+                errors = self.validator.validate_model(invalid)
+                self.assertTrue(any(
+                    f"缺少 MVP-10 capability {capability_id}" in error
+                    for error in errors
+                ), errors)
+
+        wrong_mapping = copy.deepcopy(self.model)
+        trace = next(
+            item for item in wrong_mapping["traceability"]["storyTrace"]
+            if item["stories"] == [143]
+        )
+        trace["capabilities"] = ["reporting.history.read"]
+        trace["visibleFields"] = list(
+            wrong_mapping["capabilities"]["reporting.history.read"]["visibleFields"]
+        )
+        trace["lifecycleRules"] = list(
+            wrong_mapping["capabilities"]["reporting.history.read"]["lifecycle"]
+        )
+        errors = self.validator.validate_model(wrong_mapping)
+        self.assertTrue(any(
+            "故事 143 reporting capability 语义映射不精确" in error
+            for error in errors
+        ), errors)
 
     def test_schema_is_executed_and_rejects_missing_required_field(self):
         invalid = copy.deepcopy(self.model)

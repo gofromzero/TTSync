@@ -23,8 +23,21 @@ TRANSITIONS = {
     "realtimeRestored", "terminal401", "terminal404", "conflict409",
 }
 OPERATIONS = {"claim", "release", "move", "withdraw", "resizeCapacity", "resolveConflict"}
-REQUIRED_STORIES = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 143))
+REQUIRED_STORIES = {56, 57, 58, 67, 68, 69, 70, 71} | set(range(76, 154))
 REQUIRED_MVPS = {f"MVP-{number:02d}" for number in range(3, 12)}
+REQUIRED_REPORTING_STORY_CAPABILITIES = {
+    143: {"reporting.history.read", "reporting.statistics.read"},
+    144: {"reporting.history.read"},
+    145: {"reporting.statistics.read"},
+    146: {"reporting.statistics.read"},
+    147: {"reporting.roomRecordSummary.read"},
+    148: {"reporting.history.read", "reporting.statistics.read"},
+    149: {"reporting.export.csv"},
+    150: {"reporting.export.csv"},
+    151: {"reporting.export.csv"},
+    152: {"reporting.export.csv"},
+    153: {"reporting.export.csv"},
+}
 
 
 def _schema_type_matches(value, expected):
@@ -135,6 +148,59 @@ def validate_model(model):
             if capability.get("lifecycle", {}).get("profileDisabled") != "deny":
                 errors.append(f"{capability_id}: profileDisabled 必须为 deny")
 
+    required_reporting = {
+        capability_id
+        for required in REQUIRED_REPORTING_STORY_CAPABILITIES.values()
+        for capability_id in required
+    }
+    for capability_id in sorted(required_reporting - set(capabilities)):
+        errors.append(f"缺少 MVP-10 capability {capability_id}")
+
+    dependencies = {
+        capability_id: capability.get("requiresCapability")
+        for capability_id, capability in capabilities.items()
+        if capability.get("requiresCapability")
+    }
+    for capability_id, dependency_id in dependencies.items():
+        if dependency_id not in capabilities:
+            errors.append(f"{capability_id}: 不可达 capability 依赖 {dependency_id}")
+
+    def dependency_chain(capability_id):
+        chain = []
+        current = capability_id
+        while current in dependencies:
+            if current in chain:
+                cycle = chain[chain.index(current):] + [current]
+                return cycle, None
+            chain.append(current)
+            current = dependencies[current]
+            if current not in capabilities:
+                return None, current
+        return None, None
+
+    reported_cycles = set()
+    for capability_id in dependencies:
+        cycle, _ = dependency_chain(capability_id)
+        if cycle:
+            cycle_key = frozenset(cycle)
+            if cycle_key not in reported_cycles:
+                errors.append(f"capability 依赖循环 {' -> '.join(cycle)}")
+                reported_cycles.add(cycle_key)
+    for capability_id, capability in capabilities.items():
+        for actor, decision in capability.get("decisions", {}).items():
+            if decision != "allow":
+                continue
+            current = dependencies.get(capability_id)
+            visited = set()
+            while current in capabilities and current not in visited:
+                if capabilities[current].get("decisions", {}).get(actor) != "allow":
+                    errors.append(
+                        f"{capability_id}: actor {actor} 无法满足 capability 依赖 {current}"
+                    )
+                    break
+                visited.add(current)
+                current = dependencies.get(current)
+
     create = capabilities.get("room.record.create")
     maintain = capabilities.get("room.record.maintain")
     if create is None or maintain is None:
@@ -211,6 +277,13 @@ def validate_model(model):
             errors.append(f"storyTrace[{index}]: lifecycleRules 与引用 capability 不一致")
     if mapped_stories != traced_stories:
         errors.append("storyTrace 必须逐项且仅覆盖 traceability.stories")
+    for story, expected_capabilities in REQUIRED_REPORTING_STORY_CAPABILITIES.items():
+        matches = [trace for trace in story_trace if story in trace.get("stories", [])]
+        if len(matches) != 1 or matches[0].get("stories") != [story]:
+            errors.append(f"故事 {story} 必须单独且恰好追踪一次")
+            continue
+        if set(matches[0].get("capabilities", [])) != expected_capabilities:
+            errors.append(f"故事 {story} reporting capability 语义映射不精确")
 
     responsive = model.get("responsive", {})
     if responsive.get("viewports") != ["desktop", "320px", "390px", "520px"]:

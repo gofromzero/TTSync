@@ -5,7 +5,7 @@
 ## 1. 权限边界
 
 - 服务端角色化房间快照是 capability 和字段可见性的唯一权威。客户端只能按 capability 显示、启用或禁用控件，不得用 `role === "host"`、管理员标记、是否本人或认领状态复制权限规则。
-- `teamAdminViewer` 可以查看团队内房间，但房间密码、人员牌、分队、记录、凭据和房间状态写入均为 deny。管理员必须先调用独立的 `room.host.takeover`；接管成功并重新读取快照后，只有新快照中的 `currentHost` capability 才能开启主持写控件。
+- `teamAdminViewer` 可以查看团队内房间，但房间密码、人员牌、分队、记录、凭据和房间状态写入均为 deny。`room.host.takeover` 是管理员成为主持人的角色转换命令，而不是已是主持人的写操作前置；接管成功并重新读取快照后，主持写直接由新快照中的 `currentHost` 决策与生命周期规则授权。
 - 删除/恢复属于团队管理员生命周期能力，不伪装成主持写入；本人长期资料、管理员长期资料、主持范围档案字段、当前认领牌字段分别使用不同服务端 capability。
 - 建房与主持权交接也是独立服务端能力：`room.create` 覆盖启用成员为启用项目建房及匿名拒绝，`room.host.transfer` 只允许当前主持人把主持权转给合格成员。头像读取由 `avatar.asset.read` 在成员、房间、人员牌或快照资源上下文先授权，再解析稳定资产标识。
 - 密码、参与者凭据、观众令牌、登录会话标识和认领秘密永不进入房间快照。字段不存在就是不可见，客户端不得从其他字段推导或补回。
@@ -15,6 +15,8 @@
 `open` 才按快照开放房间写入；`ended` 保持可见但只读，是否可重开由服务端单独授予；`deleted` 对普通访问者是 404 不可见终态；`credentialInvalid` 是 401 终态。成员、项目或档案停用是覆盖性限制，不批量改写人员牌、认领、队伍、对局或历史，也不把独立匿名访问会话当作登录权限的附属品。`profileDisabled` 对本人、管理员和主持人的全部游戏档案写 capability 都是 deny。
 
 项目停用后，“新增对局记录”和“维护既有记录”不是同一能力：`room.record.create` 被拒绝，`room.record.maintain` 仍可由当前主持人确认、更正、作废或恢复已有记录。两者保持独立稳定标识，客户端不得以一个合并写能力重新推导。
+
+MVP-10 的服务端权威只读能力分为项目历史 `reporting.history.read`、基础统计 `reporting.statistics.read`、主持记录管理摘要 `reporting.roomRecordSummary.read` 和管理员六表导出 `reporting.export.csv`。历史默认最近 90 天并支持父规格限定的筛选；统计只取已确认记录的最新有效版本且不生成排行榜；CSV 沿用筛选、来自同一一致读取点、即时下载且不落为持久资产。故事 143–153 在 `storyTrace` 中逐故事独立映射到上述能力，避免只列 MVP 编号而没有可执行语义。
 
 ## 2. 三角色与响应式布局
 
@@ -45,4 +47,4 @@ python scripts/validate_capability_state_model.py
 python -m unittest discover -s tests -v
 ```
 
-验证器先执行公开 schema，检查必填字段、字段可见性类型、禁止额外字段及生命周期结构；随后检查所有 capability 对六种访问上下文都有 allow/deny、控件、字段、故事和合法生命周期引用。`storyTrace` 中每个故事必须实际出现在至少一个被引用的 `capability.stories`，且 `visibleFields`、`lifecycleRules` 必须分别等于引用能力的字段与生命周期精确并集；`profileDisabled` 自动约束所有现在及未来的 `gameProfile.*` 写能力。验证器还强制记录新增与既有记录维护能力同时存在并保持项目停用语义分离，验证三角色覆盖四种宽度与十种页面状态、关键实时迁移齐全，以及六个核心操作具有键盘、44px、焦点恢复和非纯颜色播报。未来若服务端合同改变 capability 名、字段或状态迁移，必须先更新此公开制品和验证，再实现客户端消费；不得在客户端另建一份权限矩阵。
+验证器先执行公开 schema，检查必填字段、字段可见性类型、禁止额外字段及生命周期结构；随后检查所有 capability 对六种访问上下文都有 allow/deny、控件、字段、故事和合法生命周期引用。任何 `requiresCapability` 都必须指向现有能力、不得形成循环，并且原能力的每个 allowed actor 都必须能沿整条依赖链获得 allow；因此 takeover 不可能再成为 currentHost 写操作的不可满足依赖。`storyTrace` 中每个故事必须实际出现在至少一个被引用的 `capability.stories`，且 `visibleFields`、`lifecycleRules` 必须分别等于引用能力的字段与生命周期精确并集；143–153 还必须逐故事恰好追踪一次并命中固定 reporting 语义。`profileDisabled` 自动约束所有现在及未来的 `gameProfile.*` 写能力。验证器还强制记录新增与既有记录维护能力同时存在并保持项目停用语义分离，验证三角色覆盖四种宽度与十种页面状态、关键实时迁移齐全，以及六个核心操作具有键盘、44px、焦点恢复和非纯颜色播报。未来若服务端合同改变 capability 名、字段或状态迁移，必须先更新此公开制品和验证，再实现客户端消费；不得在客户端另建一份权限矩阵。
