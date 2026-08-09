@@ -103,6 +103,33 @@ test('房间命令、成功结果和样例固定并发与幂等语义', async ()
   assert.ok(examples.changedCommand && examples.noChangeCommand && examples.staleRevision && examples.idempotencyFingerprintConflict && examples.multipleViolations);
 });
 
+test('房间命令成功响应样例证明有变化与无变化的 revision 语义', async () => {
+  const api = await loadDereferencedOpenApi();
+  const operation = api.paths['/v1/rooms/{roomId}/commands'].post;
+  const requestExamples = operation.requestBody.content['application/json'].examples;
+  const responseMedia = operation.responses['200'].content['application/json'];
+  const responseExamples = responseMedia.examples;
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
+  addFormats(ajv);
+  const validate = ajv.compile(responseMedia.schema);
+
+  const expectations = [
+    ['changedResult', 'changedCommand', true, 1],
+    ['noChangeResult', 'noChangeCommand', false, 0],
+  ];
+  for (const [responseName, requestName, changed, revisionDelta] of expectations) {
+    const request = requestExamples[requestName].value;
+    const response = responseExamples[responseName].value;
+    assert.equal(validate(response), true, `${responseName}: ${ajv.errorsText(validate.errors)}`);
+    assert.equal(response.command.roomId, request.roomId);
+    assert.equal(response.command.commandId, request.commandId);
+    assert.equal(response.command.changed, changed);
+    assert.equal(response.command.revision, request.expectedRevision + revisionDelta);
+    assert.equal(response.command.type, request.type);
+    assert.deepEqual(response.command.result, { playerCardId: request.payload.playerCardId });
+  }
+});
+
 test('命令、结果及角色快照使用封闭的可辨识 union', async () => {
   const api = await loadOpenApi();
   const schemas = api.components.schemas;

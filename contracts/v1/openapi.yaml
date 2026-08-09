@@ -1248,6 +1248,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExecuteRoomCommandResponse"
+              examples:
+                changedResult:
+                  summary: 命令改变状态，revision 从请求的 8 递增到 9
+                  value:
+                    command:
+                      roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                      commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                      changed: true
+                      revision: 9
+                      type: movePlayerCard
+                      result:
+                        playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                noChangeResult:
+                  summary: 命令未改变状态，revision 保持请求时的 9
+                  value:
+                    command:
+                      roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                      commandId: 018f5f31-246c-7681-b6a6-974894a2c281
+                      changed: false
+                      revision: 9
+                      type: movePlayerCard
+                      result:
+                        playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
