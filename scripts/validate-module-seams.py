@@ -25,6 +25,21 @@ EXPECTED_MVP_STORIES = {
     "MVP-11": set(range(63, 76)),
 }
 MODULES = {"identity", "team", "activity", "reporting"}
+ACTIVITY_COMMAND_ORDER = (
+    "解析 `commandId`",
+    "核对操作者并拒绝复用冲突",
+    "核对请求指纹并拒绝复用冲突",
+    "命中相同幂等键时返回首次记录结果",
+    "校验 `expectedRevision`",
+    "重新鉴权身份与权限",
+    "校验领域规则",
+    "判断语义是否改变",
+    "写入状态",
+    "递增 revision",
+    "登记 `NOTIFY`",
+    "记录命令结果",
+    "由应用编排统一提交",
+)
 EXPECTED_MVP_MODULES = {
     "MVP-01": {"identity", "team"},
     "MVP-02": {"identity", "team"},
@@ -118,10 +133,25 @@ def validate_activity_command_contract(spec: str, failures: list[str]) -> None:
         (r"旧[^\n]*`expectedRevision`[^\n]*优先[^\n]*语义 no-op[^\n]*`revision_conflict`", "activity 旧 revision 优先"),
         (r"合法[^\n]*no-op[^\n]*`changed: false`", "activity 合法 no-op 结果"),
         (r"`changed: false`[^\n]*不递增[^\n]*revision[^\n]*不[^\n]*`NOTIFY`", "activity no-op 无副作用"),
-        (r"判定顺序[^\n]*commandId[^\n]*操作者[^\n]*请求指纹[^\n]*expectedRevision[^\n]*语义", "activity 稳定判定顺序"),
     )
     for pattern, label in requirements:
         require(section, pattern, label, failures)
+
+    order_match = re.search(r"完整判定顺序为：([^\n]+)", section)
+    actual_order = tuple(
+        step.strip().rstrip("。") for step in order_match.group(1).split("→")
+    ) if order_match else ()
+    if actual_order != ACTIVITY_COMMAND_ORDER:
+        failures.append(
+            "activity 完整判定顺序错误: "
+            f"期望 {list(ACTIVITY_COMMAND_ORDER)}，实际 {list(actual_order)}"
+        )
+    require(
+        section,
+        r"任一步失败[^\n]*应用编排[^\n]*统一回滚[^\n]*不记录命令结果",
+        "activity 失败统一回滚且不记录结果",
+        failures,
+    )
 
 
 def assert_negative_controls(spec: str, failures: list[str]) -> None:
@@ -151,6 +181,40 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
         validate_activity_command_contract(spec.replace(token, "", 1), observed)
         if not any(label in failure for failure in observed):
             failures.append(f"负例失效：删除 activity {label} 未被拒绝")
+
+    order_text = " → ".join(ACTIVITY_COMMAND_ORDER)
+    if order_text in activity:
+        for index, step in enumerate(ACTIVITY_COMMAND_ORDER):
+            mutated_steps = list(ACTIVITY_COMMAND_ORDER)
+            mutated_steps.pop(index)
+            observed = []
+            validate_activity_command_contract(
+                spec.replace(order_text, " → ".join(mutated_steps), 1), observed
+            )
+            if not any("activity 完整判定顺序错误" in failure for failure in observed):
+                failures.append(f"负例失效：删除 activity 判定步骤 {step} 未被拒绝")
+
+        for index in range(len(ACTIVITY_COMMAND_ORDER) - 1):
+            mutated_steps = list(ACTIVITY_COMMAND_ORDER)
+            mutated_steps[index], mutated_steps[index + 1] = (
+                mutated_steps[index + 1],
+                mutated_steps[index],
+            )
+            observed = []
+            validate_activity_command_contract(
+                spec.replace(order_text, " → ".join(mutated_steps), 1), observed
+            )
+            if not any("activity 完整判定顺序错误" in failure for failure in observed):
+                failures.append(
+                    f"负例失效：交换 activity 判定步骤 {index + 1}/{index + 2} 未被拒绝"
+                )
+
+    rollback = "任一步失败均由应用编排统一回滚且不记录命令结果"
+    if rollback in activity:
+        observed = []
+        validate_activity_command_contract(spec.replace(rollback, "", 1), observed)
+        if not any("activity 失败统一回滚" in failure for failure in observed):
+            failures.append("负例失效：删除 activity 统一回滚约束未被拒绝")
 
 
 def parse_story_ranges(value: str) -> set[int]:
