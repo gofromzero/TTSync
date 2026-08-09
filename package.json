@@ -3,5 +3,9 @@
   "private": true,
   "scripts": {
     "test": "node scripts/validate-mvp-acceptance.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1"
   }
 }

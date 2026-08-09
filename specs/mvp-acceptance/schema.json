@@ -87,9 +87,9 @@
       "properties": {
         "id": { "const": "F-I" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "accounts": { "$ref": "#/$defs/records" },
-        "sessions": { "$ref": "#/$defs/records" },
-        "tokens": { "$ref": "#/$defs/records" }
+        "accounts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/account" } },
+        "sessions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/session" } },
+        "tokens": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/token" } }
       }
     },
     "teamFixture": {
@@ -99,10 +99,10 @@
       "properties": {
         "id": { "const": "F-T" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "team": { "type": "object" },
-        "members": { "$ref": "#/$defs/records" },
-        "projects": { "$ref": "#/$defs/records" },
-        "templates": { "$ref": "#/$defs/records" }
+        "team": { "$ref": "#/$defs/team" },
+        "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/member" } },
+        "projects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/project" } },
+        "templates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/template" } }
       }
     },
     "activityFixture": {
@@ -112,12 +112,12 @@
       "properties": {
         "id": { "const": "F-A" },
         "aliases": { "$ref": "#/$defs/aliases" },
-        "room": { "type": "object" },
-        "actors": { "$ref": "#/$defs/records" },
-        "cards": { "$ref": "#/$defs/records" },
-        "teams": { "$ref": "#/$defs/records" },
-        "records": { "$ref": "#/$defs/records" },
-        "commandExamples": { "$ref": "#/$defs/records" }
+        "room": { "$ref": "#/$defs/room" },
+        "actors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/actor" } },
+        "cards": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/card" } },
+        "teams": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/activityTeam" } },
+        "records": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/matchRecord" } },
+        "commandExamples": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/commandExample" } }
       }
     },
     "fileFixture": {
@@ -159,13 +159,27 @@
     },
     "aliases": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
     "records": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "account": { "type": "object", "additionalProperties": false, "required": ["alias", "verification", "email"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "verification": { "enum": ["pending", "verified"] }, "email": { "type": "string", "format": "email" } } },
+    "session": { "type": "object", "additionalProperties": false, "required": ["alias", "account", "device", "state"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "account": { "$ref": "#/$defs/alias" }, "device": { "type": "string", "minLength": 1 }, "state": { "const": "active" } } },
+    "token": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "expiresAt"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["valid", "expired", "revoked"] }, "expiresAt": { "type": "string", "format": "date-time" } } },
+    "team": { "type": "object", "additionalProperties": false, "required": ["alias", "name"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "name": { "type": "string", "minLength": 1 } } },
+    "member": { "type": "object", "additionalProperties": false, "required": ["alias", "role", "state", "account"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "role": { "enum": ["administrator", "member"] }, "state": { "enum": ["enabled", "disabled", "invited"] }, "account": { "anyOf": [{ "$ref": "#/$defs/alias" }, { "type": "null" }] } } },
+    "project": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "template"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["enabled", "disabled"] }, "template": { "$ref": "#/$defs/alias" } } },
+    "template": { "type": "object", "additionalProperties": false, "required": ["alias", "version"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "version": { "type": "integer", "minimum": 1 } } },
+    "room": { "type": "object", "additionalProperties": false, "required": ["alias", "project", "state", "revision"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "project": { "$ref": "#/$defs/alias" }, "state": { "const": "open" }, "revision": { "type": "integer", "minimum": 0 } } },
+    "actor": { "type": "object", "additionalProperties": false, "required": ["alias", "kind"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "kind": { "enum": ["host", "participant", "spectator"] }, "member": { "$ref": "#/$defs/alias" } } },
+    "card": { "type": "object", "additionalProperties": false, "required": ["alias", "origin", "owner", "claim"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "origin": { "enum": ["member", "guest"] }, "owner": { "anyOf": [{ "$ref": "#/$defs/alias" }, { "type": "null" }] }, "claim": { "anyOf": [{ "$ref": "#/$defs/alias" }, { "type": "null" }] } } },
+    "activityTeam": { "type": "object", "additionalProperties": false, "required": ["alias", "capacity"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "capacity": { "type": "integer", "minimum": 1 } } },
+    "matchRecord": { "type": "object", "additionalProperties": false, "required": ["alias", "state", "occurredAt"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "state": { "enum": ["draft", "confirmed", "voided"] }, "occurredAt": { "type": "string", "format": "date-time" } } },
+    "commandExample": { "type": "object", "additionalProperties": false, "required": ["alias", "commandIdRef", "requestFingerprint", "expectedRevision"], "properties": { "alias": { "$ref": "#/$defs/alias" }, "commandIdRef": { "type": "string", "minLength": 1 }, "requestFingerprint": { "type": "string", "minLength": 1 }, "expectedRevision": { "type": "integer", "minimum": 0 }, "resultRevision": { "type": "integer", "minimum": 0 }, "changed": { "type": "boolean" }, "replayOf": { "$ref": "#/$defs/alias" }, "result": { "const": "stable-conflict" } } },
     "mvp": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "stories", "positive", "authorizationNegative", "concurrencyOrFailureNegative", "authoritativeSeam", "fixtures", "prerequisites"],
+      "required": ["id", "ownedStories", "positive", "authorizationNegative", "concurrencyOrFailureNegative", "authoritativeSeam", "fixtures", "prerequisites"],
       "properties": {
         "id": { "type": "string", "pattern": "^MVP-(?:0[1-9]|1[0-2])$" },
-        "stories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "ownedStories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "relatedStories": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
         "positive": { "type": "string", "minLength": 1 },
         "authorizationNegative": { "type": "string", "minLength": 1 },
         "concurrencyOrFailureNegative": { "type": "string", "minLength": 1 },

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 const manifestUrl = new URL("../specs/mvp-acceptance/manifest.json", import.meta.url);
 const schemaUrl = new URL("../specs/mvp-acceptance/schema.json", import.meta.url);
@@ -31,46 +33,19 @@ function walk(value, visit, path = "$") {
   }
 }
 
-function validateSchema(rootSchema, schema, value, path = "$") {
-  if (schema.$ref) {
-    const target = schema.$ref.split("/").slice(1).reduce((current, segment) => current[segment.replaceAll("~1", "/").replaceAll("~0", "~")], rootSchema);
-    assert.ok(target, `${path} 引用了不存在的 schema: ${schema.$ref}`);
-    return validateSchema(rootSchema, target, value, path);
-  }
-  if (Object.hasOwn(schema, "const")) assert.deepEqual(value, schema.const, `${path} 不符合 const`);
-  if (schema.enum) assert.ok(schema.enum.includes(value), `${path} 不在 enum 中`);
-  if (schema.type === "object") {
-    assert.ok(value && typeof value === "object" && !Array.isArray(value), `${path} 必须是 object`);
-    if (schema.minProperties !== undefined) assert.ok(Object.keys(value).length >= schema.minProperties, `${path} 属性不足`);
-    (schema.required ?? []).forEach((key) => assert.ok(Object.hasOwn(value, key), `${path} 缺少 ${key}`));
-    for (const [key, item] of Object.entries(value)) {
-      if (schema.properties?.[key]) validateSchema(rootSchema, schema.properties[key], item, `${path}.${key}`);
-      else if (schema.additionalProperties === false) fail(`${path} 不允许属性 ${key}`);
-      else if (schema.additionalProperties && typeof schema.additionalProperties === "object") validateSchema(rootSchema, schema.additionalProperties, item, `${path}.${key}`);
-    }
-  } else if (schema.type === "array") {
-    assert.ok(Array.isArray(value), `${path} 必须是 array`);
-    if (schema.minItems !== undefined) assert.ok(value.length >= schema.minItems, `${path} 元素不足`);
-    if (schema.maxItems !== undefined) assert.ok(value.length <= schema.maxItems, `${path} 元素过多`);
-    if (schema.uniqueItems) assert.equal(new Set(value.map((item) => JSON.stringify(item))).size, value.length, `${path} 元素不得重复`);
-    value.forEach((item, index) => validateSchema(rootSchema, schema.items, item, `${path}[${index}]`));
-  } else if (schema.type === "string") {
-    assert.equal(typeof value, "string", `${path} 必须是 string`);
-    if (schema.minLength !== undefined) assert.ok(value.length >= schema.minLength, `${path} 过短`);
-    if (schema.pattern) assert.match(value, new RegExp(schema.pattern), `${path} 不匹配 pattern`);
-    if (schema.format === "date-time") assert.ok(!Number.isNaN(Date.parse(value)) && /Z$/.test(value), `${path} 不是 UTC date-time`);
-    if (schema.format === "uuid") assert.match(value, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, `${path} 不是 UUID`);
-  } else if (schema.type === "integer") {
-    assert.ok(Number.isInteger(value), `${path} 必须是 integer`);
-    if (schema.minimum !== undefined) assert.ok(value >= schema.minimum, `${path} 小于 minimum`);
-    if (schema.maximum !== undefined) assert.ok(value <= schema.maximum, `${path} 大于 maximum`);
-  }
-}
-
 function validate(schema, manifest) {
+  walk(manifest, (value, path) => {
+    if (typeof value !== "string") return;
+    if (/(?:CURRENT_TIMESTAMP|Date\.now\(|new Date\(|\bnow\(\))/i.test(value)) fail(`[determinism:time] 禁止当前时间来源: ${path}`);
+    if (/(?:process\.env|Deno\.env|import\.meta\.env)/i.test(value)) fail(`[determinism:env] 禁止环境来源: ${path}`);
+    if (/(?:crypto\.randomUUID|Math\.random|randomBytes|randomInt)\s*\(/i.test(value)) fail(`[determinism:random] 禁止随机来源: ${path}`);
+  });
   assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
   assert.equal(schema.$id, "https://ttsync.test/specs/mvp-acceptance/schema.json");
-  validateSchema(schema, schema, manifest);
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats(ajv);
+  const validateStructure = ajv.compile(schema);
+  if (!validateStructure(manifest)) fail(`[schema] ${ajv.errorsText(validateStructure.errors, { separator: "; " })}`);
   assert.equal(manifest.schemaVersion, "1.0.0");
   assert.equal(manifest.fixturePolicy?.semanticAliasesOnly, true);
   assert.equal(manifest.fixturePolicy?.containsRealSecrets, false);
@@ -85,6 +60,34 @@ function validate(schema, manifest) {
   }
   assert.equal(new Set(aliases).size, aliases.length, "夹具语义别名不得重复");
   aliases.forEach((alias) => assert.match(alias, /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$/, `非法语义别名: ${alias}`));
+
+  const registries = {
+    account: new Set(manifest.fixtures["F-I"].accounts.map(({ alias }) => alias)),
+    member: new Set(manifest.fixtures["F-T"].members.map(({ alias }) => alias)),
+    project: new Set(manifest.fixtures["F-T"].projects.map(({ alias }) => alias)),
+    template: new Set(manifest.fixtures["F-T"].templates.map(({ alias }) => alias)),
+    actor: new Set(manifest.fixtures["F-A"].actors.map(({ alias }) => alias)),
+    command: new Set(manifest.fixtures["F-A"].commandExamples.map(({ alias }) => alias)),
+    commandId: new Set(Object.keys(manifest.determinism.commandIds))
+  };
+  const resolve = (category, value, path) => {
+    if (value !== null && !registries[category].has(value)) fail(`[reference:${category}] ${path} 引用了未知或错误类别别名 ${value}`);
+  };
+  manifest.fixtures["F-I"].sessions.forEach(({ account }, index) => resolve("account", account, `F-I.sessions[${index}].account`));
+  manifest.fixtures["F-T"].members.forEach(({ account }, index) => resolve("account", account, `F-T.members[${index}].account`));
+  manifest.fixtures["F-T"].projects.forEach(({ template }, index) => resolve("template", template, `F-T.projects[${index}].template`));
+  resolve("project", manifest.fixtures["F-A"].room.project, "F-A.room.project");
+  manifest.fixtures["F-A"].actors.forEach(({ member }, index) => {
+    if (member !== undefined) resolve("member", member, `F-A.actors[${index}].member`);
+  });
+  manifest.fixtures["F-A"].cards.forEach(({ owner, claim }, index) => {
+    resolve("member", owner, `F-A.cards[${index}].owner`);
+    resolve("actor", claim, `F-A.cards[${index}].claim`);
+  });
+  manifest.fixtures["F-A"].commandExamples.forEach(({ commandIdRef, replayOf }, index) => {
+    resolve("commandId", commandIdRef, `F-A.commandExamples[${index}].commandIdRef`);
+    if (replayOf !== undefined) resolve("command", replayOf, `F-A.commandExamples[${index}].replayOf`);
+  });
 
   assert.deepEqual(manifest.fixtures["F-I"].accounts.map(({ alias, verification }) => [alias, verification]), [["U0", "pending"], ["U1", "verified"], ["U2", "verified"]]);
   assert.deepEqual(manifest.fixtures["F-I"].sessions.map(({ alias, state }) => [alias, state]), [["SESSION-U1-A", "active"], ["SESSION-U1-B", "active"]]);
@@ -109,21 +112,38 @@ function validate(schema, manifest) {
     for (const key of ["positive", "authorizationNegative", "concurrencyOrFailureNegative", "authoritativeSeam"]) {
       assert.ok(typeof mvp[key] === "string" && mvp[key].trim(), `${mvp.id}.${key} 不得为空`);
     }
-    assert.ok(Array.isArray(mvp.stories) && mvp.stories.length > 0, `${mvp.id} 必须映射故事`);
-    mvp.stories.forEach((story) => {
+    assert.ok(Array.isArray(mvp.ownedStories) && mvp.ownedStories.length > 0, `${mvp.id} 必须拥有故事`);
+    mvp.ownedStories.forEach((story) => {
       assert.ok(Number.isInteger(story) && story >= 1 && story <= 163, `${mvp.id} 包含非法故事号`);
+      if (allStories.has(story)) fail(`[story-owner] 故事 ${story} 存在多个 owner`);
       allStories.add(story);
     });
     mvp.fixtures.forEach((id) => assert.ok(fixtureIds.has(id), `${mvp.id} 引用了未知夹具 ${id}`));
     mvp.prerequisites.forEach((id) => assert.ok(seenMvps.has(id), `${mvp.id} 的前置 ${id} 不存在或形成倒序依赖`));
     seenMvps.add(mvp.id);
   }
-  assert.deepEqual([...allStories].sort((a, b) => a - b), Array.from({ length: 163 }, (_, index) => index + 1), "故事 1..163 必须全部覆盖");
+  assert.deepEqual([...allStories].sort((a, b) => a - b), Array.from({ length: 163 }, (_, index) => index + 1), "[story-owner] 故事 1..163 必须恰有一个 owner");
+  manifest.mvps.forEach((mvp) => (mvp.relatedStories ?? []).forEach((story) => {
+    assert.ok(allStories.has(story), `${mvp.id}.relatedStories 引用了无 owner 故事 ${story}`);
+    assert.ok(!mvp.ownedStories.includes(story), `${mvp.id} 不得把 owner 关系重复声明为 related`);
+  }));
 
   Object.entries(manifest.determinism.times).forEach(([name, value]) => {
     assert.match(value, /^2026-01-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `时间 ${name} 必须是固定 UTC RFC3339 值`);
   });
+  assert.deepEqual(manifest.determinism.times, {
+    epoch: "2026-01-15T10:00:00Z",
+    tokenExpiredAt: "2026-01-14T10:00:00Z",
+    tokenValidUntil: "2026-01-22T10:00:00Z",
+    zeroReferenceSince: "2026-01-08T10:00:00Z",
+    matchOccurredAt: "2026-01-15T09:30:00Z",
+    backupGenerationAt: "2026-01-15T11:00:00Z"
+  }, "[determinism:time] times 只能使用受控白名单值");
   assert.deepEqual(manifest.determinism.revisions, { initial: 40, changed: 41, unchanged: 41, stale: 40 });
+  assert.deepEqual(manifest.determinism.commandIds, {
+    successfulMove: "00000000-0000-4000-8000-000000000001",
+    noOp: "00000000-0000-4000-8000-000000000002"
+  }, "[determinism:random] commandIds 只能使用受控白名单值");
   Object.values(manifest.determinism.commandIds).forEach((value) => {
     assert.match(value, /^00000000-0000-4000-8000-[0-9a-f]{12}$/, `commandId 必须是固定 UUID: ${value}`);
   });
@@ -133,6 +153,12 @@ function validate(schema, manifest) {
   assert.equal(manifest.fixtures["F-A"].room.revision, manifest.determinism.revisions.initial);
   manifest.fixtures["F-A"].records.forEach(({ occurredAt }) => assert.equal(occurredAt, manifest.determinism.times.matchOccurredAt));
   const [successfulMove, stableRetry, noOp, fingerprintConflict] = manifest.fixtures["F-A"].commandExamples;
+  assert.deepEqual(manifest.fixtures["F-A"].commandExamples.map(({ alias, requestFingerprint }) => [alias, requestFingerprint]), [
+    ["MOVE-SUCCESS", "move-card-member-to-team-capacity-2"],
+    ["MOVE-RETRY", "move-card-member-to-team-capacity-2"],
+    ["MOVE-NOOP", "move-card-member-to-team-capacity-2"],
+    ["MOVE-CONFLICT", "different-payload-with-reused-id"]
+  ], "[determinism:value] requestFingerprint 只能使用受控白名单值");
   assert.equal(successfulMove.commandIdRef, "successfulMove");
   assert.equal(stableRetry.commandIdRef, successfulMove.commandIdRef);
   assert.equal(stableRetry.requestFingerprint, successfulMove.requestFingerprint);
@@ -187,10 +213,10 @@ function clone(value) {
   return structuredClone(value);
 }
 
-function expectRejected(schema, manifest, name, mutate) {
+function expectRejected(schema, manifest, name, expectedRule, mutate) {
   const candidate = clone(manifest);
   mutate(candidate);
-  assert.throws(() => validate(schema, candidate), undefined, `负例未被拒绝: ${name}`);
+  assert.throws(() => validate(schema, candidate), expectedRule, `负例未命中预期规则: ${name}`);
 }
 
 const schema = await readJson(schemaUrl, "schema");
@@ -198,15 +224,12 @@ const manifest = await readJson(manifestUrl, "manifest");
 validate(schema, manifest);
 
 const rejectionCases = [
-  ["重复别名", (value) => value.fixtures["F-T"].aliases.push(value.fixtures["F-I"].aliases[0])],
-  ["非确定时间", (value) => { value.fixtures["F-I"].tokens[0].expiresAt = "2027-01-01T00:00:00Z"; }],
-  ["非确定 revision", (value) => { value.fixtures["F-A"].room.revision = 99; }],
-  ["遗漏故事", (value) => { value.mvps.forEach((mvp) => { mvp.stories = mvp.stories.filter((story) => story !== 163); }); }],
-  ["遗漏 MVP", (value) => { value.mvps.pop(); }],
-  ["实现主键", (value) => { value.fixtures["F-I"].accounts[0].id = 123; }],
-  ["真实秘密样式", (value) => { value.fixtures["F-I"].accounts[0].password = "hunter2"; }],
-  ["缺少夹具主体", (value) => { delete value.fixtures["F-I"].accounts; }],
-  ["恢复集摘要不一致", (value) => { value.fixtures["F-F"].restoreSet.manifestEntries[0].bytes = 99; }]
+  ["重复故事 owner", /\[story-owner\]/, (value) => value.mvps[2].ownedStories.push(7)],
+  ["未知 account 引用", /\[reference:account\]/, (value) => { value.fixtures["F-I"].sessions[0].account = "ACCOUNT-UNKNOWN"; }],
+  ["错误类别引用", /\[reference:account\]/, (value) => { value.fixtures["F-T"].members[0].account = "G1"; }],
+  ["当前时间来源", /\[determinism:time\]/, (value) => { value.fixtures["F-A"].records[0].occurredAt = "CURRENT_TIMESTAMP"; }],
+  ["环境来源", /\[determinism:env\]/, (value) => { value.fixtures["F-A"].commandExamples[0].requestFingerprint = "process.env.REQUEST_FINGERPRINT"; }],
+  ["随机来源", /\[determinism:random\]/, (value) => { value.fixtures["F-A"].commandExamples[0].requestFingerprint = "crypto.randomUUID()"; }]
 ];
-rejectionCases.forEach(([name, mutate]) => expectRejected(schema, manifest, name, mutate));
+rejectionCases.forEach(([name, expectedRule, mutate]) => expectRejected(schema, manifest, name, expectedRule, mutate));
 console.log(`MVP 验收 manifest 校验通过；${rejectionCases.length} 个语义负例均被拒绝。`);
