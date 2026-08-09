@@ -66,6 +66,15 @@ EXPECTED_SEAM_TOKENS = {
     "MVP-10": ("`identity`", "`team`", "`reporting`", "一致只读工作单元 seam", "浏览器下载"),
     "MVP-11": ("`team`", "`activity`", "files Adapter", "真实 PostgreSQL", "浏览器", "恢复 seam"),
 }
+EXPECTED_NEGATIVE_CONTROL_COUNTS = {
+    "cross_module": 1,
+    "team_reauthentication": 1,
+    "activity_contract": 7,
+    "activity_order_deletion": len(ACTIVITY_COMMAND_ORDER),
+    "activity_order_swap": len(ACTIVITY_COMMAND_ORDER) - 1,
+    "activity_rollback": 1,
+    "activity_forbidden_result": 3,
+}
 
 
 def require(text: str, pattern: str, label: str, failures: list[str]) -> None:
@@ -164,10 +173,12 @@ def validate_activity_command_contract(spec: str, failures: list[str]) -> None:
         forbid(section, pattern, label, failures)
 
 
-def assert_negative_controls(spec: str, failures: list[str]) -> None:
+def assert_negative_controls(spec: str, failures: list[str]) -> dict[str, int]:
+    counts = {group: 0 for group in EXPECTED_NEGATIVE_CONTROL_COUNTS}
     scenario = section_under_h3(spec, "### 管理员接管")
     mutated = spec.replace(scenario, scenario.replace("**稳定失败**", "**失败**", 1), 1)
     observed: list[str] = []
+    counts["cross_module"] += 1
     validate_cross_module_scenarios(mutated, observed)
     if "管理员接管 场景缺少字段 稳定失败" not in observed:
         failures.append("负例失效：删除中间场景字段未被拒绝")
@@ -175,6 +186,7 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
     team = section_under_h3(spec, "### `team` Module")
     violation = team + "\n不得自行跨行\n重新读取账号验证状态。\n"
     observed = []
+    counts["team_reauthentication"] += 1
     validate_team_reauthentication(spec.replace(team, violation, 1), observed)
     if not any("team 越权读取" in failure for failure in observed):
         failures.append("负例失效：team 跨行越权措辞未被拒绝")
@@ -187,11 +199,16 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
         ("只有已提交成功命令", "只重放已提交成功结果"),
         ("命令结果与占位均不持久化", "失败不持久化结果或占位"),
         ("后续重试重新走鉴权、版本与领域规则", "失败重试重新判定"),
-        ("不制造 `command_reuse_conflict`", "无成功 ledger 不制造复用冲突"),
+        (
+            "没有已提交成功的 ledger 时不以旧失败制造 `command_reuse_conflict`",
+            "无成功 ledger 不制造复用冲突",
+        ),
     ):
         if token not in activity:
+            failures.append(f"负例失效：缺少 activity {label} 变异锚点")
             continue
         observed = []
+        counts["activity_contract"] += 1
         validate_activity_command_contract(spec.replace(token, "", 1), observed)
         if not any(label in failure for failure in observed):
             failures.append(f"负例失效：删除 activity {label} 未被拒绝")
@@ -202,6 +219,7 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
             mutated_steps = list(ACTIVITY_COMMAND_ORDER)
             mutated_steps.pop(index)
             observed = []
+            counts["activity_order_deletion"] += 1
             validate_activity_command_contract(
                 spec.replace(order_text, " → ".join(mutated_steps), 1), observed
             )
@@ -215,6 +233,7 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
                 mutated_steps[index],
             )
             observed = []
+            counts["activity_order_swap"] += 1
             validate_activity_command_contract(
                 spec.replace(order_text, " → ".join(mutated_steps), 1), observed
             )
@@ -222,12 +241,15 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
                 failures.append(
                     f"负例失效：交换 activity 判定步骤 {index + 1}/{index + 2} 未被拒绝"
                 )
+    else:
+        failures.append("负例失效：缺少 activity 完整判定顺序变异锚点")
 
     rollback = "任何失败均整体回滚，命令结果与占位均不持久化"
     if rollback not in activity:
         failures.append("负例失效：缺少 activity 统一回滚约束变异锚点")
     else:
         observed = []
+        counts["activity_rollback"] += 1
         validate_activity_command_contract(spec.replace(rollback, "", 1), observed)
         if not any(
             "activity 失败统一回滚且不记录结果" in failure
@@ -241,11 +263,19 @@ def assert_negative_controls(spec: str, failures: list[str]) -> None:
         ("失败后保留占位。", "activity 失败后保留占位"),
     ):
         observed = []
+        counts["activity_forbidden_result"] += 1
         validate_activity_command_contract(
             spec.replace(activity, activity + "\n" + violation, 1), observed
         )
         if not any(label in failure for failure in observed):
             failures.append(f"负例失效：{label} 未被拒绝")
+
+    if counts != EXPECTED_NEGATIVE_CONTROL_COUNTS:
+        failures.append(
+            "负例执行数量错误: "
+            f"期望 {EXPECTED_NEGATIVE_CONTROL_COUNTS}，实际 {counts}"
+        )
+    return counts
 
 
 def parse_story_ranges(value: str) -> set[int]:
@@ -380,7 +410,11 @@ def main() -> int:
 
     validate_team_reauthentication(spec, failures)
     validate_activity_command_contract(spec, failures)
-    assert_negative_controls(spec, failures)
+    negative_control_counts = assert_negative_controls(spec, failures)
+    print(
+        "负例变异执行："
+        f"总数 {sum(negative_control_counts.values())}，分组 {negative_control_counts}"
+    )
     require(spec, r"### `team` Module.*?\| 稳定失败 \|[^\n]*`binding_conflict`", "team 稳定失败 binding_conflict", failures)
     require(spec, r"### `team` Module.*?\| 稳定失败 \|[^\n]*`profile_conflict`", "team 稳定失败 profile_conflict", failures)
     require(context, r"^\*\*观众会话\*\*:", "CONTEXT.md 术语 观众会话", failures)
