@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ttsync.test/specs/mvp-acceptance/schema.json",
+  "title": "TTSync MVP 验收语义清单",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "fixturePolicy", "determinism", "csvCases", "fixtures", "mvps"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "fixturePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["semanticAliasesOnly", "containsRealSecrets", "credentialConvention"],
+      "properties": {
+        "semanticAliasesOnly": { "const": true },
+        "containsRealSecrets": { "const": false },
+        "credentialConvention": { "const": "TEST_ONLY placeholders; inject at test runtime" }
+      }
+    },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["times", "revisions", "commandIds"],
+      "properties": {
+        "times": {
+          "type": "object",
+          "minProperties": 4,
+          "additionalProperties": { "type": "string", "format": "date-time" }
+        },
+        "revisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["initial", "changed", "unchanged", "stale"],
+          "properties": {
+            "initial": { "const": 40 },
+            "changed": { "const": 41 },
+            "unchanged": { "const": 41 },
+            "stale": { "const": 40 }
+          }
+        },
+        "commandIds": {
+          "type": "object",
+          "minProperties": 2,
+          "additionalProperties": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+    "csvCases": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["alias", "value", "expectedEscaped"],
+        "properties": {
+          "alias": { "$ref": "#/$defs/alias" },
+          "value": { "type": "string" },
+          "expectedEscaped": { "type": "string" }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["F-I", "F-T", "F-A", "F-F", "F-O"],
+      "properties": {
+        "F-I": { "$ref": "#/$defs/identityFixture" },
+        "F-T": { "$ref": "#/$defs/teamFixture" },
+        "F-A": { "$ref": "#/$defs/activityFixture" },
+        "F-F": { "$ref": "#/$defs/fileFixture" },
+        "F-O": { "$ref": "#/$defs/operationsFixture" }
+      }
+    },
+    "mvps": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/mvp" }
+    }
+  },
+  "$defs": {
+    "alias": { "type": "string", "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*$" },
+    "identityFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aliases", "accounts", "sessions", "tokens"],
+      "properties": {
+        "id": { "const": "F-I" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "accounts": { "$ref": "#/$defs/records" },
+        "sessions": { "$ref": "#/$defs/records" },
+        "tokens": { "$ref": "#/$defs/records" }
+      }
+    },
+    "teamFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aliases", "team", "members", "projects", "templates"],
+      "properties": {
+        "id": { "const": "F-T" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "team": { "type": "object" },
+        "members": { "$ref": "#/$defs/records" },
+        "projects": { "$ref": "#/$defs/records" },
+        "templates": { "$ref": "#/$defs/records" }
+      }
+    },
+    "activityFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aliases", "room", "actors", "cards", "teams", "records", "commandExamples"],
+      "properties": {
+        "id": { "const": "F-A" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "room": { "type": "object" },
+        "actors": { "$ref": "#/$defs/records" },
+        "cards": { "$ref": "#/$defs/records" },
+        "teams": { "$ref": "#/$defs/records" },
+        "records": { "$ref": "#/$defs/records" },
+        "commandExamples": { "$ref": "#/$defs/records" }
+      }
+    },
+    "fileFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aliases", "limits", "imageCases", "assets", "restoreSet"],
+      "properties": {
+        "id": { "const": "F-F" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "limits": { "type": "object" },
+        "imageCases": { "$ref": "#/$defs/records" },
+        "assets": { "$ref": "#/$defs/records" },
+        "restoreSet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alias", "generatedAt", "components", "manifestEntries", "expected"],
+          "properties": {
+            "alias": { "$ref": "#/$defs/alias" },
+            "generatedAt": { "type": "string", "format": "date-time" },
+            "components": { "$ref": "#/$defs/records" },
+            "manifestEntries": { "$ref": "#/$defs/records" },
+            "expected": { "type": "object" }
+          }
+        }
+      }
+    },
+    "operationsFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "aliases", "environment", "backupTarget", "clients", "capacityMeaning"],
+      "properties": {
+        "id": { "const": "F-O" },
+        "aliases": { "$ref": "#/$defs/aliases" },
+        "environment": { "type": "object" },
+        "backupTarget": { "type": "object" },
+        "clients": { "type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
+        "capacityMeaning": { "const": "personal-test-evidence-only-not-a-production-capacity-commitment" }
+      }
+    },
+    "aliases": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/alias" } },
+    "records": { "type": "array", "minItems": 1, "items": { "type": "object" } },
+    "mvp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "stories", "positive", "authorizationNegative", "concurrencyOrFailureNegative", "authoritativeSeam", "fixtures", "prerequisites"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^MVP-(?:0[1-9]|1[0-2])$" },
+        "stories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "positive": { "type": "string", "minLength": 1 },
+        "authorizationNegative": { "type": "string", "minLength": 1 },
+        "concurrencyOrFailureNegative": { "type": "string", "minLength": 1 },
+        "authoritativeSeam": { "type": "string", "minLength": 1 },
+        "fixtures": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["F-I", "F-T", "F-A", "F-F", "F-O"] } },
+        "prerequisites": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^MVP-(?:0[1-9]|1[0-2])$" } }
+      }
+    }
+  }
+}

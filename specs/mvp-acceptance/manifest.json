@@ -1,0 +1,162 @@
+{
+  "schemaVersion": "1.0.0",
+  "fixturePolicy": {
+    "semanticAliasesOnly": true,
+    "containsRealSecrets": false,
+    "credentialConvention": "TEST_ONLY placeholders; inject at test runtime"
+  },
+  "determinism": {
+    "times": {
+      "epoch": "2026-01-15T10:00:00Z",
+      "tokenExpiredAt": "2026-01-14T10:00:00Z",
+      "tokenValidUntil": "2026-01-22T10:00:00Z",
+      "zeroReferenceSince": "2026-01-08T10:00:00Z",
+      "matchOccurredAt": "2026-01-15T09:30:00Z",
+      "backupGenerationAt": "2026-01-15T11:00:00Z"
+    },
+    "revisions": {
+      "initial": 40,
+      "changed": 41,
+      "unchanged": 41,
+      "stale": 40
+    },
+    "commandIds": {
+      "successfulMove": "00000000-0000-4000-8000-000000000001",
+      "noOp": "00000000-0000-4000-8000-000000000002"
+    }
+  },
+  "csvCases": [
+    { "alias": "CSV-CHINESE", "value": "中文队伍，甲", "expectedEscaped": "中文队伍，甲" },
+    { "alias": "CSV-EQUALS", "value": "=1+1", "expectedEscaped": "'=1+1" },
+    { "alias": "CSV-PLUS", "value": "+SUM(A1:A2)", "expectedEscaped": "'+SUM(A1:A2)" },
+    { "alias": "CSV-MINUS", "value": "-2+3", "expectedEscaped": "'-2+3" },
+    { "alias": "CSV-AT", "value": "@IMPORTDATA(example)", "expectedEscaped": "'@IMPORTDATA(example)" },
+    { "alias": "CSV-QUOTED-LINE", "value": "甲,\"乙\"\n丙", "expectedEscaped": "\"甲,\"\"乙\"\"\n丙\"" },
+    { "alias": "CSV-EMPTY", "value": "", "expectedEscaped": "" }
+  ],
+  "fixtures": {
+    "F-I": {
+      "id": "F-I",
+      "aliases": ["U0", "U1", "U2", "SESSION-U1-A", "SESSION-U1-B", "TOKEN-VALID", "TOKEN-EXPIRED", "TOKEN-REVOKED"],
+      "accounts": [
+        { "alias": "U0", "verification": "pending", "email": "pending@example.test" },
+        { "alias": "U1", "verification": "verified", "email": "one@example.test" },
+        { "alias": "U2", "verification": "verified", "email": "two@example.test" }
+      ],
+      "sessions": [
+        { "alias": "SESSION-U1-A", "account": "U1", "device": "device-a", "state": "active" },
+        { "alias": "SESSION-U1-B", "account": "U1", "device": "device-b", "state": "active" }
+      ],
+      "tokens": [
+        { "alias": "TOKEN-VALID", "state": "valid", "expiresAt": "2026-01-22T10:00:00Z" },
+        { "alias": "TOKEN-EXPIRED", "state": "expired", "expiresAt": "2026-01-14T10:00:00Z" },
+        { "alias": "TOKEN-REVOKED", "state": "revoked", "expiresAt": "2026-01-22T10:00:00Z" }
+      ]
+    },
+    "F-T": {
+      "id": "F-T",
+      "aliases": ["T1", "M1", "M2", "MEMBER-REGULAR", "MEMBER-DISABLED", "MEMBER-INVITED", "G1", "G2", "TEMPLATE-V1", "TEMPLATE-V2"],
+      "team": { "alias": "T1", "name": "周末游戏组" },
+      "members": [
+        { "alias": "M1", "role": "administrator", "state": "enabled", "account": "U1" },
+        { "alias": "M2", "role": "administrator", "state": "enabled", "account": "U2" },
+        { "alias": "MEMBER-REGULAR", "role": "member", "state": "enabled", "account": null },
+        { "alias": "MEMBER-DISABLED", "role": "member", "state": "disabled", "account": null },
+        { "alias": "MEMBER-INVITED", "role": "member", "state": "invited", "account": null }
+      ],
+      "projects": [
+        { "alias": "G1", "state": "enabled", "template": "TEMPLATE-V2" },
+        { "alias": "G2", "state": "disabled", "template": "TEMPLATE-V1" }
+      ],
+      "templates": [
+        { "alias": "TEMPLATE-V1", "version": 1 },
+        { "alias": "TEMPLATE-V2", "version": 2 }
+      ]
+    },
+    "F-A": {
+      "id": "F-A",
+      "aliases": ["R1", "HOST-1", "PARTICIPANT-1", "PARTICIPANT-2", "SPECTATOR-1", "CARD-MEMBER", "CARD-GUEST", "TEAM-CAPACITY-1", "TEAM-CAPACITY-2", "RECORD-DRAFT", "RECORD-CONFIRMED", "RECORD-VOIDED", "MOVE-SUCCESS", "MOVE-RETRY", "MOVE-NOOP", "MOVE-CONFLICT"],
+      "room": { "alias": "R1", "project": "G1", "state": "open", "revision": 40 },
+      "actors": [
+        { "alias": "HOST-1", "kind": "host", "member": "M1" },
+        { "alias": "PARTICIPANT-1", "kind": "participant" },
+        { "alias": "PARTICIPANT-2", "kind": "participant" },
+        { "alias": "SPECTATOR-1", "kind": "spectator" }
+      ],
+      "cards": [
+        { "alias": "CARD-MEMBER", "origin": "member", "owner": "MEMBER-REGULAR", "claim": "PARTICIPANT-1" },
+        { "alias": "CARD-GUEST", "origin": "guest", "owner": null, "claim": null }
+      ],
+      "teams": [
+        { "alias": "TEAM-CAPACITY-1", "capacity": 1 },
+        { "alias": "TEAM-CAPACITY-2", "capacity": 2 }
+      ],
+      "records": [
+        { "alias": "RECORD-DRAFT", "state": "draft", "occurredAt": "2026-01-15T09:30:00Z" },
+        { "alias": "RECORD-CONFIRMED", "state": "confirmed", "occurredAt": "2026-01-15T09:30:00Z" },
+        { "alias": "RECORD-VOIDED", "state": "voided", "occurredAt": "2026-01-15T09:30:00Z" }
+      ],
+      "commandExamples": [
+        { "alias": "MOVE-SUCCESS", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true },
+        { "alias": "MOVE-RETRY", "commandIdRef": "successfulMove", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 40, "resultRevision": 41, "changed": true, "replayOf": "MOVE-SUCCESS" },
+        { "alias": "MOVE-NOOP", "commandIdRef": "noOp", "requestFingerprint": "move-card-member-to-team-capacity-2", "expectedRevision": 41, "resultRevision": 41, "changed": false },
+        { "alias": "MOVE-CONFLICT", "commandIdRef": "successfulMove", "requestFingerprint": "different-payload-with-reused-id", "expectedRevision": 41, "result": "stable-conflict" }
+      ]
+    },
+    "F-F": {
+      "id": "F-F",
+      "aliases": ["IMAGE-JPEG", "IMAGE-PNG", "IMAGE-DISGUISED", "IMAGE-ANIMATED", "IMAGE-CORRUPT", "IMAGE-OVER-BYTES", "IMAGE-OVER-DIMENSION", "IMAGE-OVER-PIXELS", "ASSET-IN-USE", "ASSET-ZERO-REFERENCE", "RESTORE-GENERATION-1"],
+      "limits": { "bytes": 5242880, "maxDimension": 4096, "maxPixels": 16000000, "normalizedLongestEdge": 512, "maxConcurrentDecodes": 2 },
+      "imageCases": [
+        { "alias": "IMAGE-JPEG", "category": "valid-jpeg", "declaredMediaType": "image/jpeg", "decodedFormat": "jpeg", "bytes": 1024, "width": 640, "height": 480, "frames": 1, "expected": "normalized-static-png" },
+        { "alias": "IMAGE-PNG", "category": "valid-png", "declaredMediaType": "image/png", "decodedFormat": "png", "bytes": 2048, "width": 480, "height": 640, "frames": 1, "expected": "normalized-static-png" },
+        { "alias": "IMAGE-DISGUISED", "category": "disguised", "declaredMediaType": "image/png", "decodedFormat": "jpeg", "bytes": 1024, "width": 640, "height": 480, "frames": 1, "expected": "rejected" },
+        { "alias": "IMAGE-ANIMATED", "category": "animated", "declaredMediaType": "image/png", "decodedFormat": "png", "bytes": 2048, "width": 320, "height": 320, "frames": 2, "expected": "rejected" },
+        { "alias": "IMAGE-CORRUPT", "category": "corrupt", "declaredMediaType": "image/jpeg", "decodedFormat": "decode-error", "bytes": 128, "expected": "rejected" },
+        { "alias": "IMAGE-OVER-BYTES", "category": "over-byte-limit", "declaredMediaType": "image/png", "decodedFormat": "not-attempted", "bytes": 5242881, "expected": "rejected" },
+        { "alias": "IMAGE-OVER-DIMENSION", "category": "over-dimension-limit", "declaredMediaType": "image/png", "decodedFormat": "png", "bytes": 4096, "width": 4097, "height": 1, "frames": 1, "expected": "rejected" },
+        { "alias": "IMAGE-OVER-PIXELS", "category": "over-pixel-limit", "declaredMediaType": "image/png", "decodedFormat": "png", "bytes": 4096, "width": 4001, "height": 4000, "frames": 1, "expected": "rejected" }
+      ],
+      "assets": [
+        { "alias": "ASSET-IN-USE", "state": "referenced", "references": ["member", "card", "match-snapshot"], "gcExpected": "retained" },
+        { "alias": "ASSET-ZERO-REFERENCE", "state": "zero-reference", "references": [], "zeroReferenceSince": "2026-01-08T10:00:00Z", "gcExpected": "eligible-after-lock-and-recheck" }
+      ],
+      "restoreSet": {
+        "alias": "RESTORE-GENERATION-1",
+        "generatedAt": "2026-01-15T11:00:00Z",
+        "components": [
+          { "semanticName": "database-dump", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bytes": 1024 },
+          { "semanticName": "avatar-archive", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "bytes": 2048 },
+          { "semanticName": "recovery-manifest", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "bytes": 512 }
+        ],
+        "manifestEntries": [
+          { "semanticName": "database-dump", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bytes": 1024 },
+          { "semanticName": "avatar-archive", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "bytes": 2048 }
+        ],
+        "expected": { "digestVerification": "all-match", "verifiedComponents": ["database-dump", "avatar-archive"], "missingFiles": 0, "applicationSmoke": ["login", "room-read", "avatar-read", "test-write", "sse-converges"] }
+      }
+    },
+    "F-O": {
+      "id": "F-O",
+      "aliases": ["COMPOSE-FRESH", "BACKUP-OFFSITE", "CLIENT-01", "CLIENT-02", "CLIENT-03", "CLIENT-04", "CLIENT-05", "CLIENT-06", "CLIENT-07", "CLIENT-08", "CLIENT-09", "CLIENT-10", "CLIENT-11", "CLIENT-12", "CLIENT-13", "CLIENT-14", "CLIENT-15", "CLIENT-16", "CLIENT-17", "CLIENT-18", "CLIENT-19", "CLIENT-20"],
+      "environment": { "alias": "COMPOSE-FRESH", "profile": "minimum-personal-test", "resources": { "cpu": 1, "memoryMiB": 2048, "diskGiB": 20 }, "services": ["application", "postgresql", "caddy"] },
+      "backupTarget": { "alias": "BACKUP-OFFSITE", "failureDomain": "different-from-compose-host", "credential": "<TEST_ONLY>" },
+      "clients": ["CLIENT-01", "CLIENT-02", "CLIENT-03", "CLIENT-04", "CLIENT-05", "CLIENT-06", "CLIENT-07", "CLIENT-08", "CLIENT-09", "CLIENT-10", "CLIENT-11", "CLIENT-12", "CLIENT-13", "CLIENT-14", "CLIENT-15", "CLIENT-16", "CLIENT-17", "CLIENT-18", "CLIENT-19", "CLIENT-20"],
+      "capacityMeaning": "personal-test-evidence-only-not-a-production-capacity-commitment"
+    }
+  },
+  "mvps": [
+    { "id": "MVP-01", "stories": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], "positive": "注册、验证并原子创建首个团队", "authorizationNegative": "U0 创建团队被拒", "concurrencyOrFailureNegative": "重复入口、CSRF 或令牌失败、建团队中途失败均无部分状态", "authoritativeSeam": "identity/team + 真实 PostgreSQL + HTTP", "fixtures": ["F-I","F-T"], "prerequisites": [] },
+    { "id": "MVP-02", "stories": [7,8,9,10,11,12,13,14,15,16,17,18,19,22,23,24,25,26,27,28,29,30], "positive": "先创建未绑定成员，再完成定向邀请、绑定与多设备会话失效", "authorizationNegative": "邮箱不符或未验证账号被拒", "concurrencyOrFailureNegative": "过期、撤销、重发旧链接及并发接受最多一个成功", "authoritativeSeam": "identity/team + 真实 PostgreSQL + HTTP", "fixtures": ["F-I","F-T"], "prerequisites": ["MVP-01"] },
+    { "id": "MVP-03", "stories": [45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62], "positive": "创建项目、唯一档案、模板版本及恢复", "authorizationNegative": "本人、管理员、主持人和匿名者的越权修改被拒", "concurrencyOrFailureNegative": "并发建档收敛，旧 revision 与停用状态写入被拒", "authoritativeSeam": "team + 真实 PostgreSQL + HTTP", "fixtures": ["F-I","F-T"], "prerequisites": ["MVP-01","MVP-02"] },
+    { "id": "MVP-04", "stories": [76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92], "positive": "创建房间、三种访问、转让或接管及删除恢复", "authorizationNegative": "匿名者建房或管理员未接管写入被拒", "concurrencyOrFailureNegative": "凭据轮换、并发主持权变化及恢复失败保持一致", "authoritativeSeam": "activity + 真实 PostgreSQL + HTTP/浏览器", "fixtures": ["F-T","F-A"], "prerequisites": ["MVP-03"] },
+    { "id": "MVP-05", "stories": [93,94,95,96,97,98,99,100,101,102,103,104,105,106,107], "positive": "建牌、认领、释放、分队与等价操作", "authorizationNegative": "观众写入或参与者修改未认领牌被拒", "concurrencyOrFailureNegative": "同牌并发认领、最后名额竞争及缩容超员不丢人", "authoritativeSeam": "activity + 真实 PostgreSQL + 浏览器", "fixtures": ["F-A"], "prerequisites": ["MVP-04"] },
+    { "id": "MVP-06", "stories": [108,109,110,111,112,113,114,115,116,117,118,119,120], "positive": "冻结快照并完成确认、更正、作废、恢复", "authorizationNegative": "非主持人维护记录被拒", "concurrencyOrFailureNegative": "并发确认、更正及事务失败不产生半份记录", "authoritativeSeam": "activity + 真实 PostgreSQL + HTTP/浏览器", "fixtures": ["F-T","F-A"], "prerequisites": ["MVP-03","MVP-05"] },
+    { "id": "MVP-07", "stories": [31,32,33,34,35,36,37,38,39,40,41,42,43,44], "positive": "停用、解绑、离开、恢复和重新邀请语义分离", "authorizationNegative": "停用成员延续团队权限被拒", "concurrencyOrFailureNegative": "最后管理员竞态与开放房间主持人生命周期命令受阻", "authoritativeSeam": "team/activity + 真实 PostgreSQL + HTTP", "fixtures": ["F-I","F-T","F-A"], "prerequisites": ["MVP-02","MVP-04"] },
+    { "id": "MVP-08", "stories": [121,122,123,124,125,126,127,128], "positive": "命令成功、稳定重试与 changed false", "authorizationNegative": "当前角色无 capability 的命令被拒", "concurrencyOrFailureNegative": "同 revision 竞争、指纹冲突和回滚均无重复 revision 或通知", "authoritativeSeam": "activity + 真实 PostgreSQL + HTTP", "fixtures": ["F-A"], "prerequisites": ["MVP-04"] },
+    { "id": "MVP-09", "stories": [129,130,131,132,133,134,135,136,137,138,139,140,141,142], "positive": "三角色在桌面和窄屏以完整快照收敛", "authorizationNegative": "观众看不到秘密或写 capability", "concurrencyOrFailureNegative": "重复、乱序、丢失通知、旧快照、断线及 listener 重启不回退", "authoritativeSeam": "真实浏览器 + Caddy + 真实 PostgreSQL", "fixtures": ["F-A","F-O"], "prerequisites": ["MVP-05","MVP-08"] },
+    { "id": "MVP-10", "stories": [143,144,145,146,147,148,149,150,151,152,153], "positive": "历史、基础统计与六张 CSV 口径一致", "authorizationNegative": "普通成员导出完整数据被拒", "concurrencyOrFailureNegative": "并发更正时跨表仍为同一读取点且特殊文本安全往返", "authoritativeSeam": "reporting + 真实 PostgreSQL + 浏览器下载", "fixtures": ["F-T","F-A"], "prerequisites": ["MVP-06","MVP-07"] },
+    { "id": "MVP-11", "stories": [63,64,65,66,67,68,69,70,71,72,73,74,75], "positive": "头像标准化、授权、冻结、清理和同代恢复", "authorizationNegative": "无资源上下文者读取或替换被拒", "concurrencyOrFailureNegative": "跨存储失败、并发替换、GC 竞态和摘要错误可检测", "authoritativeSeam": "文件 adapter + 真实 PostgreSQL + 浏览器/恢复", "fixtures": ["F-F","F-A"], "prerequisites": ["MVP-03","MVP-04","MVP-06"] },
+    { "id": "MVP-12", "stories": [154,155,156,157,158,159,160,161,162,163], "positive": "全新 Compose 经 HTTPS 完成最小端到端烟测", "authorizationNegative": "备份、配置和维护入口不向普通访问者公开", "concurrencyOrFailureNegative": "PostgreSQL 暂停、重启、目标不可写、OOM、磁盘阈值及恢复失败可见", "authoritativeSeam": "真实 Compose + Caddy + 临时恢复", "fixtures": ["F-O","F-F"], "prerequisites": ["MVP-01","MVP-04","MVP-06","MVP-09","MVP-10","MVP-11"] }
+  ]
+}
