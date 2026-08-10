@@ -39,6 +39,7 @@ try {
     -e "TTSYNC_TEST_DATABASE_URL=$env:TTSYNC_TEST_DATABASE_URL" `
     -e "TTSYNC_TEST_POSTGRES_CONTAINER=$postgresContainerId" `
     -e "TTSYNC_TEST_COMPOSE_PROJECT=$composeProject" `
+    -e "TTSYNC_REQUIRE_DATABASE_STOP=1" `
     app go test -tags=integration ./internal/platform/postgres -count=1
   if ($LASTEXITCODE -ne 0) {
     throw 'PostgreSQL integration test 失败'

@@ -16,6 +16,11 @@ func TestHealth(t *testing.T) {
 	if databaseURL == "" {
 		t.Fatal("TTSYNC_TEST_DATABASE_URL is required")
 	}
+	containerName := os.Getenv("TTSYNC_TEST_POSTGRES_CONTAINER")
+	requireDatabaseStop := os.Getenv("TTSYNC_REQUIRE_DATABASE_STOP") == "1"
+	if requireDatabaseStop && containerName == "" {
+		t.Fatal("TTSYNC_TEST_POSTGRES_CONTAINER is required when TTSYNC_REQUIRE_DATABASE_STOP=1")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -35,8 +40,8 @@ func TestHealth(t *testing.T) {
 		t.Fatal("Open(invalid DSN) error = nil, want error")
 	}
 
-	containerName := os.Getenv("TTSYNC_TEST_POSTGRES_CONTAINER")
 	if containerName == "" {
+		t.Log("skipping real PostgreSQL stop check: TTSYNC_REQUIRE_DATABASE_STOP is not 1 and TTSYNC_TEST_POSTGRES_CONTAINER is empty")
 		return
 	}
 
