@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ttsync.local/contracts/capability-state-model.schema.json",
+  "title": "TTSync F-04 capability and responsive state model",
+  "type": "object",
+  "required": ["$schema", "version", "issue", "parentSpec", "capabilityAuthority", "clientPolicy", "actors", "lifecycleOverlays", "capabilities", "fieldVisibilityRules", "responsive", "stateDefinitions", "transitions", "coreOperations", "traceability"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "const": "./capability-state-model.schema.json" },
+    "version": { "const": "1.0.0" },
+    "issue": { "const": 28 },
+    "parentSpec": { "const": 24 },
+    "capabilityAuthority": { "const": "server-authoritative" },
+    "clientPolicy": { "const": "consume-only-no-local-permission-rules" },
+    "actors": { "type": "object", "required": ["selfMember", "teamAdminViewer", "currentHost", "claimingParticipant", "otherParticipant", "spectator"], "additionalProperties": false, "properties": { "selfMember": { "type": "string" }, "teamAdminViewer": { "type": "string" }, "currentHost": { "type": "string" }, "claimingParticipant": { "type": "string" }, "otherParticipant": { "type": "string" }, "spectator": { "type": "string" } } },
+    "lifecycleOverlays": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "string", "minLength": 1 } },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/capability" }
+    },
+    "fieldVisibilityRules": {
+      "type": "object",
+      "required": ["neverInSnapshot", "hostOnly", "participantOnly", "spectator", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "neverInSnapshot": { "$ref": "#/$defs/fieldNames" },
+        "hostOnly": { "$ref": "#/$defs/fieldNames" },
+        "participantOnly": { "$ref": "#/$defs/fieldNames" },
+        "spectator": { "$ref": "#/$defs/fieldNames" },
+        "rule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "responsive": { "type": "object", "required": ["viewports", "layouts", "roles"] },
+    "stateDefinitions": { "type": "object", "minProperties": 10 },
+    "transitions": { "type": "array", "items": { "type": "object", "required": ["id", "from", "trigger", "to", "effect"] } },
+    "coreOperations": { "type": "array", "items": { "$ref": "#/$defs/coreOperation" } },
+    "traceability": { "$ref": "#/$defs/traceability" }
+  },
+  "$defs": {
+    "fieldNames": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "capability": {
+      "type": "object",
+      "required": ["kind", "serverCapability", "decisions", "control", "visibleFields", "stories", "lifecycle"],
+      "properties": {
+        "kind": { "enum": ["read", "write"] },
+        "serverCapability": { "type": "string", "minLength": 1 },
+        "decisions": { "type": "object", "required": ["selfMember", "teamAdminViewer", "currentHost", "claimingParticipant", "otherParticipant", "spectator"], "additionalProperties": false, "properties": { "selfMember": { "enum": ["allow", "deny"] }, "teamAdminViewer": { "enum": ["allow", "deny"] }, "currentHost": { "enum": ["allow", "deny"] }, "claimingParticipant": { "enum": ["allow", "deny"] }, "otherParticipant": { "enum": ["allow", "deny"] }, "spectator": { "enum": ["allow", "deny"] } } },
+        "control": { "type": "string", "minLength": 1 },
+        "visibleFields": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "stories": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "lifecycle": { "type": "object", "minProperties": 1, "propertyNames": { "enum": ["open", "ended", "deleted", "credentialInvalid", "memberDisabled", "memberEnabled", "projectDisabled", "profileDisabled"] }, "additionalProperties": { "enum": ["allow", "deny"] } },
+        "requiresCapability": { "type": "string" }
+      }
+    },
+    "coreOperation": {
+      "type": "object",
+      "required": ["id", "keyboardPath", "minimumTargetPx", "focusRecovery", "nonColorAnnouncement"],
+      "properties": {
+        "minimumTargetPx": { "type": "integer", "minimum": 44 }
+      }
+    },
+    "storyTrace": {
+      "type": "object",
+      "required": ["stories", "capabilities", "visibleFields", "lifecycleRules"],
+      "additionalProperties": false,
+      "properties": {
+        "stories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "visibleFields": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "lifecycleRules": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "required": ["mvp", "stories", "storyTrace"],
+      "additionalProperties": false,
+      "properties": {
+        "mvp": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "stories": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "integer", "minimum": 1, "maximum": 163 } },
+        "storyTrace": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/storyTrace" } }
+      }
+    }
+  }
+}
