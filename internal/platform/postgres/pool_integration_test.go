@@ -57,31 +57,38 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-func stopTestPostgres(t *testing.T, ctx context.Context, containerName string) {
+func stopTestPostgres(t *testing.T, ctx context.Context, containerTarget string) {
 	t.Helper()
-
-	if !strings.HasPrefix(containerName, "ttsync-b01-task2-") {
-		t.Fatalf("refusing to stop unexpected container %q", containerName)
-	}
 
 	inspect := exec.CommandContext(
 		ctx,
 		"docker",
 		"inspect",
 		"--format",
-		`{{.Name}}|{{index .Config.Labels "ttsync.task"}}`,
-		containerName,
+		`{{.Id}}|{{.Name}}|{{index .Config.Labels "ttsync.task"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}`,
+		containerTarget,
 	)
 	metadata, err := inspect.CombinedOutput()
 	if err != nil {
 		t.Fatalf("inspect test PostgreSQL container: %v: %s", err, metadata)
 	}
-	wantMetadata := "/" + containerName + "|issue-30-task2"
-	if actual := strings.TrimSpace(string(metadata)); actual != wantMetadata {
-		t.Fatalf("refusing to stop container with metadata %q, want %q", actual, wantMetadata)
+	parts := strings.Split(strings.TrimSpace(string(metadata)), "|")
+	if len(parts) != 5 {
+		t.Fatalf("refusing to stop container with malformed metadata %q", metadata)
+	}
+	containerID, containerName := parts[0], strings.TrimPrefix(parts[1], "/")
+	if containerTarget != containerID && containerTarget != containerName {
+		t.Fatalf("refusing to stop non-exact container target %q", containerTarget)
 	}
 
-	stop := exec.CommandContext(ctx, "docker", "stop", containerName)
+	isTaskContainer := parts[2] == "issue-30-task2" && strings.HasPrefix(containerName, "ttsync-b01-task2-")
+	expectedComposeProject := os.Getenv("TTSYNC_TEST_COMPOSE_PROJECT")
+	isComposePostgres := expectedComposeProject != "" && parts[3] == "postgres" && parts[4] == expectedComposeProject
+	if !isTaskContainer && !isComposePostgres {
+		t.Fatalf("refusing to stop container %q with untrusted labels", containerTarget)
+	}
+
+	stop := exec.CommandContext(ctx, "docker", "stop", containerID)
 	if output, err := stop.CombinedOutput(); err != nil {
 		t.Fatalf("stop real PostgreSQL container: %v: %s", err, output)
 	}
