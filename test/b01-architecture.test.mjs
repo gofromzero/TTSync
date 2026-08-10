@@ -365,11 +365,68 @@ function repositoryFilesUnder(relativeDirectory = '.', ignoredDirectoryNames = n
   return files;
 }
 
-function moduleImportPaths(source) {
-  return [
-    ...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
-    ...source.matchAll(/\bimport\s+['"]([^'"]+)['"]/g),
-  ].map((match) => match[1]);
+function assertClientAllowedSurface(sources) {
+  assert.deepEqual(Object.keys(sources).sort(), ['App.vue', 'main.ts', 'style.css'], 'B-01 客户端源文件必须精确为 App.vue、main.ts、style.css');
+
+  const mainFile = ts.createSourceFile('main.ts', sources['main.ts'], ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  assert.deepEqual(mainFile.parseDiagnostics ?? [], [], 'main.ts 必须是有效 TypeScript');
+  assert.equal(mainFile.statements.length, 4, 'main.ts 只允许三个 import 与 Vue mount');
+  const [vueImport, appImport, styleImport, mountStatement] = mainFile.statements;
+  assert.ok(ts.isImportDeclaration(vueImport) && vueImport.moduleSpecifier.text === 'vue', 'main.ts 必须从 vue 导入 createApp');
+  assert.deepEqual(
+    vueImport.importClause?.namedBindings?.elements.map((element) => [element.propertyName?.text ?? element.name.text, element.name.text]),
+    [['createApp', 'createApp']],
+    'main.ts 的 Vue import 只允许 createApp',
+  );
+  assert.ok(ts.isImportDeclaration(appImport) && appImport.moduleSpecifier.text === './App.vue' && appImport.importClause?.name?.text === 'App' && !appImport.importClause.namedBindings, 'main.ts 必须默认导入 ./App.vue');
+  assert.ok(ts.isImportDeclaration(styleImport) && styleImport.moduleSpecifier.text === './style.css' && !styleImport.importClause, 'main.ts 必须仅副作用导入 ./style.css');
+  assert.ok(ts.isExpressionStatement(mountStatement), 'main.ts 最后必须直接 mount Vue');
+  const mountCall = unwrappedExpression(mountStatement.expression);
+  assert.ok(ts.isCallExpression(mountCall) && ts.isPropertyAccessExpression(mountCall.expression) && mountCall.expression.name.text === 'mount', 'main.ts 只允许 createApp(...).mount(...) 调用');
+  const createCall = unwrappedExpression(mountCall.expression.expression);
+  assert.ok(ts.isCallExpression(createCall) && ts.isIdentifier(createCall.expression) && createCall.expression.text === 'createApp' && createCall.arguments.length === 1 && ts.isIdentifier(createCall.arguments[0]) && createCall.arguments[0].text === 'App', 'main.ts 必须以 App 调用 createApp');
+  assert.ok(mountCall.arguments.length === 1 && ts.isStringLiteralLike(mountCall.arguments[0]) && mountCall.arguments[0].text === '#app', 'Vue 只能 mount 到 #app');
+
+  const appSource = sources['App.vue'];
+  const scriptMatch = appSource.match(/<script setup lang="ts">([\s\S]*?)<\/script>/);
+  const templateMatch = appSource.match(/<template>([\s\S]*?)<\/template>/);
+  assert.ok(scriptMatch && templateMatch, 'App.vue 必须且只能提供 script setup lang=ts 与 template');
+  assert.equal(appSource.replace(scriptMatch[0], '').replace(templateMatch[0], '').trim(), '', 'App.vue 不允许额外 block');
+  const scriptFile = ts.createSourceFile('App.vue.ts', scriptMatch[1], ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  assert.deepEqual(scriptFile.parseDiagnostics ?? [], [], 'App.vue script 必须是有效 TypeScript');
+  const scriptImports = scriptFile.statements.filter(ts.isImportDeclaration);
+  assert.equal(scriptImports.length, 1, 'App.vue 只能有一个 Vue import');
+  assert.ok(scriptImports[0].moduleSpecifier.text === 'vue' && !scriptImports[0].importClause?.name, 'App.vue 只能从 vue 使用命名 import');
+  assert.deepEqual(scriptImports[0].importClause?.namedBindings?.elements.map((element) => element.name.text), ['ref'], 'App.vue 只允许 ref 状态能力');
+
+  const allowedInitializer = (node) => {
+    const value = unwrappedExpression(node);
+    if (ts.isStringLiteralLike(value) || ts.isNumericLiteral(value) || [ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword].includes(value.kind)) return true;
+    if (ts.isArrayLiteralExpression(value)) return value.elements.every(allowedInitializer);
+    if (ts.isObjectLiteralExpression(value)) return value.properties.every((property) => ts.isPropertyAssignment(property) && allowedInitializer(property.initializer));
+    return ts.isCallExpression(value) && ts.isIdentifier(value.expression) && value.expression.text === 'ref' && value.arguments.length === 1 && allowedInitializer(value.arguments[0]);
+  };
+  for (const statement of scriptFile.statements.filter((statement) => !ts.isImportDeclaration(statement))) {
+    assert.ok(ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0, 'App.vue script 只允许 const 本地展示状态');
+    for (const declaration of statement.declarationList.declarations) {
+      assert.ok(ts.isIdentifier(declaration.name) && declaration.initializer && allowedInitializer(declaration.initializer), 'App.vue 状态初值只允许字面量、数组、对象或 ref');
+    }
+  }
+
+  const allowedElements = new Set(['main', 'header', 'section', 'div', 'h1', 'p', 'nav', 'button', 'span', 'strong']);
+  const allowedAttributes = new Set(['class', 'id', 'type', 'role', 'tabindex', 'aria-label', 'aria-selected', 'aria-controls', 'v-for', 'v-if', 'v-else-if', 'v-else', ':key', ':class', ':aria-selected', '@click']);
+  const urlAttributes = new Set(['href', 'src', 'srcset', 'action', 'formaction', 'poster', 'xlink:href']);
+  for (const match of templateMatch[1].matchAll(/<\s*(\/)?([A-Za-z][\w-]*)([^>]*)>/g)) {
+    if (match[1]) continue;
+    assert.ok(allowedElements.has(match[2]), `App.vue template 元素不在允许面：${match[2]}`);
+    const remainder = match[3].replace(/([:@]?[A-Za-z_][\w:.-]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'))?/g, (attribute, name) => {
+      assert.ok(!urlAttributes.has(name), `App.vue template 不允许任何 URL scheme：${name}`);
+      assert.ok(allowedAttributes.has(name), `App.vue template 属性不在允许面：${name}`);
+      return '';
+    });
+    assert.equal(remainder.trim(), '', `App.vue template 属性语法不在允许面：${remainder.trim()}`);
+  }
+  assert.doesNotMatch(sources['style.css'], /@(?:import|font-face)|\burl\s*\(|\bexpression\s*\(/i, 'style.css 不允许外链或可执行资源');
 }
 
 function inspectGoFiles(goFiles) {
@@ -391,11 +448,26 @@ function writeFixture(directory, name, source) {
   return fixturePath;
 }
 
+function writeGoPackageFixture(directory, name, sources) {
+  const fixtureDirectory = join(directory, name.replaceAll(/[\\/:*?"<>|.]/g, '-'));
+  mkdirSync(fixtureDirectory);
+  return Object.entries(sources).map(([fileName, source]) => {
+    const fixturePath = join(fixtureDirectory, fileName);
+    writeFileSync(fixturePath, source);
+    return fixturePath;
+  });
+}
+
 function assertHttpapiAllowedSurface(inspection) {
   assert.equal(inspection.length, 1, 'HTTP adapter 必须作为单一 Go package 检查');
   const [inspectedPackage] = inspection;
   assert.deepEqual(inspectedPackage.TypeErrors, [], `HTTP adapter 必须通过 go/types：${inspectedPackage.TypeErrors.join('; ')}`);
   const files = inspectedPackage.Files;
+  assert.deepEqual(
+    files.map((file) => basename(file.Path)).sort(),
+    ['router.go', 'web.go'],
+    'internal/httpapi 生产文件必须精确为 router.go 与 web.go',
+  );
   const allowedImports = new Set([
     'context',
     'embed',
@@ -428,6 +500,8 @@ function assertHttpapiAllowedSurface(inspection) {
 
   const routerFile = files.find((file) => basename(file.Path) === 'router.go');
   assert.ok(routerFile, 'HTTP adapter 必须包含 router.go');
+  const webFile = files.find((file) => basename(file.Path) === 'web.go');
+  assert.ok(webFile, 'HTTP adapter 必须包含 web.go');
   assert.deepEqual(
     routerFile.TopLevels,
     [
@@ -475,15 +549,28 @@ function assertHttpapiAllowedSurface(inspection) {
   assert.ok(registrations.some((call) => call.Name === 'Get' && call.Arguments[0]?.Kind === 'string' && call.Arguments[0].Value === '/health/live'), '必须注册 /health/live');
   assert.ok(registrations.some((call) => call.Name === 'Get' && call.Arguments[0]?.Kind === 'string' && call.Arguments[0].Value === '/health/ready'), '必须注册 /health/ready');
 
+  const assertInlineHTTPHandler = (argument, label) => {
+    assert.equal(argument?.Kind, 'expression', `${label} 必须直接使用 inline func，不能从其他声明注入 handler`);
+    assert.match(
+      argument.Value,
+      /^func\((?:[A-Za-z_]\w*\s+)?http\.ResponseWriter,\s*(?:[A-Za-z_]\w*\s+)?\*http\.Request\)\s*\{/,
+      `${label} inline func 参数必须精确为 (http.ResponseWriter, *http.Request)`,
+    );
+  };
+
   for (const call of registrations) {
     const path = call.Arguments[0];
     if (call.Name === 'NotFound') {
+      assert.equal(call.Arguments.length, 1, 'NotFound 必须只接收一个 inline SPA handler');
+      assertInlineHTTPHandler(call.Arguments[0], 'NotFound handler');
       continue;
     }
     assert.equal(path?.Kind, 'string', `路由路径必须是字面量：${call.Receiver}.${call.Name}`);
     const isHealthRead = call.Name === 'Get' && allowedHealthPaths.has(path.Value);
     const isSpaFallback = ['Get', 'Handle', 'HandleFunc'].includes(call.Name) && allowedFallbackPaths.has(path.Value);
     assert.ok(isHealthRead || isSpaFallback, `B-01 不得注册领域路由、写路由或中间件：${call.Receiver}.${call.Name} ${path.Value}`);
+    assert.equal(call.Arguments.length, 2, `${path.Value} 必须只接收路径与 handler`);
+    assertInlineHTTPHandler(call.Arguments[1], `${path.Value} handler`);
   }
   assert.ok(
     registrations.some((call) => call.Name === 'NotFound') || registrations.some((call) => ['/', '/*'].includes(call.Arguments[0]?.Value)),
@@ -500,6 +587,37 @@ function assertHttpapiAllowedSurface(inspection) {
     const isReady = call.Receiver === configName && call.Name === 'Ready' && call.ObjectKind === 'var';
     const isBuiltin = call.Package === '' && call.ObjectKind === 'builtin' && ['append', 'len', 'make'].includes(call.Name);
     assert.ok(isChi || isStandard || isReady || isBuiltin, `router.go New 调用不在允许面：${call.Receiver ? `${call.Receiver}.` : ''}${call.Name}`);
+  }
+
+  const webSource = readFileSync(webFile.Path, 'utf8');
+  const embeddedDeclaration = webSource.match(/^\/\/go:embed web\/dist\/\*\r?\nvar ([A-Za-z_]\w*) embed\.FS$/m);
+  assert.ok(embeddedDeclaration, 'web.go 必须且只能以 embed.FS 承载 //go:embed web/dist/*');
+  const embeddedName = embeddedDeclaration[1];
+  assert.deepEqual(
+    webFile.TopLevels,
+    [
+      { Kind: 'var', Names: [embeddedName] },
+      { Kind: 'func', Names: ['WebAssets'] },
+    ],
+    'web.go 顶层只允许嵌入资产与 WebAssets seam',
+  );
+  assert.deepEqual(
+    webFile.Imports,
+    [
+      { Name: '', Path: 'embed' },
+      { Name: '', Path: 'io/fs' },
+    ],
+    'web.go 只能导入 embed 与 io/fs',
+  );
+  assert.deepEqual(
+    webFile.Functions,
+    [{ Name: 'WebAssets', Receiver: false, TypeParameters: 0, Parameters: [], Results: ['fs.FS'] }],
+    'web.go 只能公开 WebAssets() fs.FS',
+  );
+  for (const call of webFile.Calls) {
+    const isSub = call.Function === 'WebAssets' && call.Package === 'io/fs' && call.Name === 'Sub';
+    const isPanic = call.Function === 'WebAssets' && call.Package === '' && call.ObjectKind === 'builtin' && call.Name === 'panic';
+    assert.ok(isSub || isPanic, `web.go 调用不在静态资产允许面：${call.Receiver ? `${call.Receiver}.` : ''}${call.Name}`);
   }
 }
 
@@ -536,9 +654,14 @@ function propertyCall(expression, receiverName, methodName) {
 
 function variableBindings(sourceFile) {
   const bindings = new Map();
-  for (const node of nodesUnder(sourceFile)) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      bindings.set(node.name.text, node.initializer);
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        bindings.set(declaration.name.text, declaration.initializer);
+      }
     }
   }
   return bindings;
@@ -546,6 +669,47 @@ function variableBindings(sourceFile) {
 
 function expressionReferencesIdentifier(expression, identifierName) {
   return nodesUnder(expression).some((node) => ts.isIdentifier(node) && node.text === identifierName);
+}
+
+function reachableStatementContains(statement, target) {
+  if (ts.isBlock(statement)) {
+    return reachableStatementsContain(statement.statements, target);
+  }
+  if (ts.isIfStatement(statement)) {
+    if (statement.expression.kind !== ts.SyntaxKind.FalseKeyword && nodesUnder(statement.thenStatement).includes(target)) {
+      return reachableStatementContains(statement.thenStatement, target);
+    }
+    return Boolean(statement.elseStatement)
+      && nodesUnder(statement.elseStatement).includes(target)
+      && reachableStatementContains(statement.elseStatement, target);
+  }
+  return nodesUnder(statement).includes(target);
+}
+
+function reachableStatementsContain(statements, target) {
+  for (const statement of statements) {
+    if (reachableStatementContains(statement, target)) {
+      return true;
+    }
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
+      return false;
+    }
+  }
+  return false;
+}
+
+function topLevelCallRecords(sourceFile) {
+  const records = [];
+  sourceFile.statements.forEach((statement, index) => {
+    if (!ts.isExpressionStatement(statement)) {
+      return;
+    }
+    const expression = unwrappedExpression(statement.expression);
+    if (ts.isCallExpression(expression)) {
+      records.push({ call: expression, index });
+    }
+  });
+  return records;
 }
 
 function assertBrowserSmokeAllowedSurface(source) {
@@ -571,6 +735,17 @@ function assertBrowserSmokeAllowedSurface(source) {
   assert.ok(assertName, '浏览器 smoke 必须导入 node:assert/strict');
 
   const bindings = variableBindings(sourceFile);
+  const bindingPositions = new Map();
+  sourceFile.statements.forEach((statement, index) => {
+    if (!ts.isVariableStatement(statement)) {
+      return;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+        bindingPositions.set(declaration.name.text, index);
+      }
+    }
+  });
   const bindingForCall = (receiver, method) => [...bindings.entries()].find(([, initializer]) => propertyCall(initializer, receiver, method));
   const browserBinding = bindingForCall(chromiumName, 'launch');
   assert.ok(browserBinding, '浏览器 smoke 必须调用 chromium.launch');
@@ -590,7 +765,9 @@ function assertBrowserSmokeAllowedSurface(source) {
   assert.ok(pageBinding, '浏览器 smoke 必须从 context.newPage 创建 page');
   const [pageName] = pageBinding;
 
-  const calls = nodesUnder(sourceFile).filter(ts.isCallExpression);
+  const callRecords = topLevelCallRecords(sourceFile);
+  const calls = callRecords.map(({ call }) => call);
+  const callPosition = (target) => callRecords.find(({ call }) => call === target)?.index;
   const gotoCall = calls.find((call) => propertyCall(call, pageName, 'goto'));
   assert.ok(gotoCall, '浏览器 smoke 必须调用 page.goto');
   const gotoArgument = gotoCall.arguments[0];
@@ -645,17 +822,37 @@ function assertBrowserSmokeAllowedSurface(source) {
       && node.expression.name.text === 'push'
       && node.arguments.some((argument) => expressionReferencesIdentifier(argument, eventParameter)));
     assert.ok(pushCall, 'page ' + eventName + ' listener 必须采集真实事件数据');
+    const listenerPosition = callPosition(listener);
+    assert.ok(reachableStatementContains(callback.body, pushCall), 'page ' + eventName + ' listener 的 collector 写入必须可达');
     const collectorName = pushCall.expression.expression.text;
     const collectorInitializer = bindings.get(collectorName);
     assert.ok(collectorInitializer && ts.isArrayLiteralExpression(collectorInitializer), 'page ' + eventName + ' collector 必须是已定义数组');
+    assert.ok(bindingPositions.get(collectorName) < listenerPosition, 'page ' + eventName + ' collector 必须先声明再注册 listener');
+    assert.ok(listenerPosition < callPosition(gotoCall), 'page ' + eventName + ' listener 必须早于 page.goto 注册');
     return collectorName;
   };
 
   const requestsName = collectorForEvent('request');
   const consoleErrorsName = collectorForEvent('console');
   const isEmptyArray = (value) => ts.isArrayLiteralExpression(value) && value.elements.length === 0;
-  assert.ok(hasDeepEqual(requestsName, isEmptyArray), '浏览器 smoke 必须断言 request 采集集合');
-  assert.ok(hasDeepEqual(consoleErrorsName, isEmptyArray), '浏览器 smoke 必须断言 console error 采集集合');
+  const requestAssertion = calls.find((call) => ts.isPropertyAccessExpression(call.expression)
+    && ts.isIdentifier(call.expression.expression)
+    && call.expression.expression.text === assertName
+    && call.expression.name.text === 'deepEqual'
+    && ts.isIdentifier(call.arguments[0])
+    && call.arguments[0].text === requestsName
+    && isEmptyArray(call.arguments[1]));
+  const consoleAssertion = calls.find((call) => ts.isPropertyAccessExpression(call.expression)
+    && ts.isIdentifier(call.expression.expression)
+    && call.expression.expression.text === assertName
+    && call.expression.name.text === 'deepEqual'
+    && ts.isIdentifier(call.arguments[0])
+    && call.arguments[0].text === consoleErrorsName
+    && isEmptyArray(call.arguments[1]));
+  assert.ok(requestAssertion, '浏览器 smoke 必须在顶层可达路径断言 request 采集集合');
+  assert.ok(consoleAssertion, '浏览器 smoke 必须在顶层可达路径断言 console error 采集集合');
+  assert.ok(callPosition(gotoCall) < callPosition(requestAssertion), 'request 最终断言必须位于 page.goto 之后');
+  assert.ok(callPosition(gotoCall) < callPosition(consoleAssertion), 'console 最终断言必须位于 page.goto 之后');
 }
 
 test('Go AST validator 拒绝 import、路由和中间件绕过', () => {
@@ -689,7 +886,19 @@ func New(config Config) http.Handler {
   })
   return router
 }`;
-    assert.doesNotThrow(() => assertHttpapiAllowedSurface(inspectGoFiles([writeFixture(fixtureDirectory, 'baseline.go', baseline)])));
+    const web = `package httpapi
+
+import (
+  "embed"
+  "io/fs"
+)
+
+//go:embed web/dist/*
+var embeddedWeb embed.FS
+
+func WebAssets() fs.FS { return embeddedWeb }
+`;
+    assert.doesNotThrow(() => assertHttpapiAllowedSurface(inspectGoFiles(writeGoPackageFixture(fixtureDirectory, 'baseline', { 'router.go': baseline, 'web.go': web }))));
 
     const fixtures = [
       ['缺 Chi import 与 chi.NewRouter', baseline.replace('"github.com/go-chi/chi/v5"', '').replace('router := chi.NewRouter()', 'router := fakeRouter{}') + '\ntype fakeRouter struct{}\nfunc (fakeRouter) ServeHTTP(http.ResponseWriter, *http.Request) {}\nfunc (fakeRouter) Get(string, http.HandlerFunc) {}\nfunc (fakeRouter) NotFound(http.HandlerFunc) {}\n'],
@@ -721,13 +930,86 @@ func New(config Config) http.Handler {
       ['换名包内逻辑', baseline.replace('return router', 'renamedLogic()\n  return router') + '\nfunc renamedLogic() {}\n'],
       ['包级协作者', baseline.replace('return router', 'collaborator()\n  return router') + '\nvar collaborator = func() {}\n'],
     ];
-    const fixturePaths = fixtures.map(([name, source]) => writeFixture(fixtureDirectory, `${name}.go`, source));
-    const inspectionByPath = new Map(
-      inspectGoFiles(fixturePaths).flatMap((inspectedPackage) => inspectedPackage.Files.map((file) => [file.Path, inspectedPackage])),
-    );
+    const fixturePaths = fixtures.map(([name, source]) => writeGoPackageFixture(fixtureDirectory, name, { 'router.go': source, 'web.go': web }));
+    const inspectionByDirectory = new Map(inspectGoFiles(fixturePaths.flat()).map((inspectedPackage) => [inspectedPackage.Directory, inspectedPackage]));
     for (const [index, [name]] of fixtures.entries()) {
       assert.throws(
-        () => assertHttpapiAllowedSurface([inspectionByPath.get(fixturePaths[index])]),
+        () => assertHttpapiAllowedSurface([inspectionByDirectory.get(dirname(fixturePaths[index][0]))]),
+        assert.AssertionError,
+        `Go AST validator 必须拒绝 ${name}`,
+      );
+    }
+  } finally {
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  }
+});
+
+test('Go AST validator 拒绝跨文件声明与 handler 注入', () => {
+  const fixtureDirectory = mkdtempSync(join(tmpdir(), 'ttsync-b01-go-package-fixtures-'));
+  try {
+    const router = `package httpapi
+
+import (
+  "context"
+  "io/fs"
+  "net/http"
+
+  "github.com/go-chi/chi/v5"
+)
+
+type Config struct {
+  Ready func(context.Context) error
+  Web fs.FS
+}
+
+func New(config Config) http.Handler {
+  router := chi.NewRouter()
+  router.Get("/health/live", func(http.ResponseWriter, *http.Request) {})
+  router.Get("/health/ready", func(writer http.ResponseWriter, request *http.Request) {
+    if config.Ready(request.Context()) != nil {
+      writer.WriteHeader(http.StatusServiceUnavailable)
+    }
+  })
+  router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
+    http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
+  })
+  return router
+}`;
+    const web = `package httpapi
+
+import (
+  "embed"
+  "io/fs"
+)
+
+//go:embed web/dist/*
+var embeddedWeb embed.FS
+
+func WebAssets() fs.FS { return embeddedWeb }
+`;
+    const baselinePaths = writeGoPackageFixture(fixtureDirectory, '合法双文件包', { 'router.go': router, 'web.go': web });
+    assert.doesNotThrow(() => assertHttpapiAllowedSurface(inspectGoFiles(baselinePaths)));
+
+    const declarationBypass = web.replace('  "io/fs"', '  "io/fs"\n  "net/http"') + `
+var packageCollaborator = func() {}
+func init() { packageCollaborator() }
+func hiddenHandler(http.ResponseWriter, *http.Request) {}
+func (Config) HiddenMethod() {}
+`;
+    const injectedHandlerRouter = router.replace('func(http.ResponseWriter, *http.Request) {}', 'healthHandler');
+    const handlerBypass = `package httpapi
+
+import "net/http"
+
+var healthHandler http.HandlerFunc = func(http.ResponseWriter, *http.Request) {}
+`;
+
+    for (const [name, sources] of [
+      ['web.go 藏包级声明、init、函数与 Config method', { 'router.go': router, 'web.go': declarationBypass }],
+      ['额外文件注入 health handler', { 'router.go': injectedHandlerRouter, 'web.go': web, 'handlers.go': handlerBypass }],
+    ]) {
+      assert.throws(
+        () => assertHttpapiAllowedSurface(inspectGoFiles(writeGoPackageFixture(fixtureDirectory, name, sources))),
         assert.AssertionError,
         `Go AST validator 必须拒绝 ${name}`,
       );
@@ -748,9 +1030,11 @@ const consoleErrors = [];
 page.on('console', (message) => {
   if (message.type() === 'error') consoleErrors.push(message.text());
 });
-await page.goto('https://localhost:8443');
 const requests = [];
-page.on('request', (request) => requests.push(request.url()));
+page.on('request', (request) => {
+  if (!request.url().startsWith('https://localhost:8443')) requests.push(request.url());
+});
+await page.goto('https://localhost:8443');
 const expectedInteractiveControls = ['主持人视图', '参与者视图', '观众视图'];
 const interactiveControls = await page.getByRole('tab').allTextContents();
 assert.deepEqual(interactiveControls, expectedInteractiveControls);
@@ -761,13 +1045,50 @@ await browser.close();`;
   for (const [name, source] of [
     ['缺 Playwright import', validSmoke.replace("import { chromium } from 'playwright';\n", '')],
     ['缺 HTTPS goto', validSmoke.replace("await page.goto('https://localhost:8443');\n", '')],
+    ['goto 早于 request listener', validSmoke.replace("await page.goto('https://localhost:8443');\n", '').replace('const requests = [];\n', "await page.goto('https://localhost:8443');\nconst requests = [];\n")],
     ['缺 DOM role 读取', validSmoke.replace("const interactiveControls = await page.getByRole('tab').allTextContents();\n", 'const interactiveControls = expectedInteractiveControls;\n')],
-    ['请求监听未采集', validSmoke.replace("(request) => requests.push(request.url())", '() => {}')],
+    ['请求监听未采集', validSmoke.replace("(request) => {\n  if (!request.url().startsWith('https://localhost:8443')) requests.push(request.url());\n}", '() => {}')],
     ['console 监听未采集', validSmoke.replace("(message) => {\n  if (message.type() === 'error') consoleErrors.push(message.text());\n}", '() => {}')],
     ['使用未定义 requests', validSmoke.replace('const requests = [];\n', '')],
+    ['request listener 写入不可达', validSmoke.replace("if (!request.url().startsWith('https://localhost:8443')) requests.push(request.url());", "return;\n  requests.push(request.url());")],
+    ['最终 request 断言不可达', validSmoke.replace('assert.deepEqual(requests, []);', 'if (false) assert.deepEqual(requests, []);')],
     ['语法无效', validSmoke.replace('const requests = [];', 'const requests = ;')],
   ]) {
     assert.throws(() => assertBrowserSmokeAllowedSurface(source), assert.AssertionError, `浏览器 smoke validator 必须拒绝 ${name}`);
+  }
+});
+
+test('客户端源码 validator 采用空壳能力允许面', () => {
+  const validSources = {
+    'App.vue': `<script setup lang="ts">
+import { ref } from 'vue';
+const views = ['主持人视图', '参与者视图', '观众视图'];
+const activeView = ref('主持人视图');
+</script>
+<template>
+  <main class="shell">
+    <h1>TTSync</h1>
+    <nav role="tablist">
+      <button v-for="view in views" :key="view" role="tab" type="button" :aria-selected="activeView === view" @click="activeView = view">{{ view }}</button>
+    </nav>
+    <p>{{ activeView }}</p>
+  </main>
+</template>`,
+    'main.ts': `import { createApp } from 'vue';
+import App from './App.vue';
+import './style.css';
+createApp(App).mount('#app');`,
+    'style.css': `.shell { color: #172033; }`,
+  };
+  assert.doesNotThrow(() => assertClientAllowedSurface(validSources));
+  for (const [name, sources] of [
+    ['sendBeacon', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nnavigator.sendBeacon('/audit');") }],
+    ['任意网络 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nfetch('/api/team');") }],
+    ['持久化 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nlocalStorage.setItem('role', 'host');") }],
+    ['模板外链资源', { ...validSources, 'App.vue': validSources['App.vue'].replace('<h1>TTSync</h1>', '<h1>TTSync</h1><img src="https://example.invalid/a.png">') }],
+    ['额外源文件', { ...validSources, 'api.ts': 'export {};' }],
+  ]) {
+    assert.throws(() => assertClientAllowedSurface(sources), assert.AssertionError, `客户端 validator 必须拒绝 ${name}`);
   }
 });
 
@@ -794,9 +1115,10 @@ test('Chi adapter 仅拥有 health 与 SPA 映射允许面', () => {
 });
 
 test('客户端空壳由浏览器 smoke 的交互、请求和 console 允许面验收', () => {
-  const appSource = readFileSync(requireFile('clients/web/src/App.vue'), 'utf8');
-  const sourceFiles = filesUnder('clients/web/src').map((file) => relative(join(repositoryRoot, 'clients/web/src'), file)).sort();
+  const clientSourceDirectory = join(repositoryRoot, 'clients/web/src');
+  const sourceFiles = filesUnder('clients/web/src').map((file) => relative(clientSourceDirectory, file)).sort();
   assert.deepEqual(sourceFiles, ['App.vue', 'main.ts', 'style.css'], 'B-01 客户端只允许空壳源文件');
+  assertClientAllowedSurface(Object.fromEntries(sourceFiles.map((file) => [file, readFileSync(join(clientSourceDirectory, file), 'utf8')])));
   const clientPackage = JSON.parse(readFileSync(requireFile('clients/web/package.json'), 'utf8'));
   const allowedClientPackages = new Set(['vue', '@vitejs/plugin-vue', 'typescript', 'vite', 'vue-tsc']);
   const declaredClientPackages = [...Object.keys(clientPackage.dependencies ?? {}), ...Object.keys(clientPackage.devDependencies ?? {})];
@@ -807,24 +1129,6 @@ test('客户端空壳由浏览器 smoke 的交互、请求和 console 允许面�
     'B-01 客户端依赖只允许 Vue 构建空壳所需包',
   );
 
-  const allowedClientImports = new Set(['vue', './App.vue', './style.css']);
-  const forbiddenClientSeams = /\b(?:fetch|axios|XMLHttpRequest|WebSocket|EventSource|localStorage|sessionStorage|indexedDB|document\.cookie|createStore|useStore|dispatch|commit|emit|v-model)\b|\bimport\s*\(/;
-  const forbiddenInternalImport = /(?:from\s+['"][^'"]*internal\/|require\(['"][^'"]*internal\/)/;
-  for (const clientFile of filesUnder('clients/web/src')) {
-    const source = readFileSync(clientFile, 'utf8');
-    assert.deepEqual(
-      moduleImportPaths(source).filter((importPath) => !allowedClientImports.has(importPath)),
-      [],
-      `B-01 客户端只允许 Vue 与本地空壳资源依赖：${relative(repositoryRoot, clientFile)}`,
-    );
-    assert.doesNotMatch(source, forbiddenClientSeams, `B-01 客户端不得拥有网络、领域命令或持久化状态 seam：${relative(repositoryRoot, clientFile)}`);
-    assert.doesNotMatch(source, forbiddenInternalImport, `客户端不得直接依赖 Go 领域代码：${relative(repositoryRoot, clientFile)}`);
-  }
-  assert.doesNotMatch(
-    appSource,
-    /\b(?:function|async|await|computed|watch|watchEffect|defineEmits|defineProps)\b|=>/,
-    'B-01 App.vue 只允许本地展示状态，不能容纳可扩展领域逻辑 seam',
-  );
   const smokeSource = readFileSync(requireFile('test/b01-browser-smoke.mjs'), 'utf8');
   assertBrowserSmokeAllowedSurface(smokeSource);
 });
