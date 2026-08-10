@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ttsync.example/schemas/v1/room-events.schema.json",
+  "title": "Room invalidation event",
+  "description": "房间失效通知只是重新读取权威快照的提示，不是领域事件、状态差量或可靠历史。SSE 的 id 等于 revision。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["roomId", "revision"],
+  "properties": {
+    "roomId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "examples": [
+    {
+      "roomId": "018f5f1e-17d8-7a38-94d0-ecf3184ccf23",
+      "revision": 9
+    }
+  ]
+}

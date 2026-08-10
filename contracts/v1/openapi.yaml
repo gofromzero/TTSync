@@ -1,0 +1,4387 @@
+openapi: 3.1.0
+info:
+  title: TTSync MVP HTTP and SSE API
+  version: 1.0.0
+  description: MVP v1 的公开合同。房间命令使用 JSON expectedRevision，因此过期版本映射为 409 而不是 If-Match/412。SSE 仅作失效提示，客户端始终以角色化完整快照收敛。
+servers:
+  - url: /api
+tags:
+  - name: rooms
+  - name: identity
+  - name: teams
+  - name: games
+  - name: reporting
+  - name: avatars
+x-account-security:
+  - accountSession: []
+    csrfToken: []
+x-public-security:
+  - anonymousCsrf: []
+x-request-parameter:
+  - $ref: "#/components/parameters/RequestId"
+paths:
+  /v1/accounts:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: registerAccount 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterAccountResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: registerAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterAccountRequest"
+      summary: 注册账号并发送验证邮件
+  /v1/accounts/verification/resend:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: resendVerification 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendVerificationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: resendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      summary: 以不暴露账号存在性的通用结果重发验证邮件
+  /v1/accounts/verification:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: verifyEmail 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyEmailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      summary: 使用一次性令牌验证邮箱
+  /v1/sessions:
+    get:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: getSession 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetSessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: getSession
+      summary: 读取当前会话和邮箱验证状态
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: login 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      summary: 使用规范化邮箱和密码登录
+    delete:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: logout 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      summary: 撤销当前登录会话
+  /v1/sessions/all:
+    delete:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: logoutAllSessions 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutAllSessionsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: logoutAllSessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyRequest"
+      summary: 撤销账号全部登录会话
+  /v1/password-reset-requests:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: requestPasswordReset 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestPasswordResetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailRequest"
+      summary: 以通用结果请求密码重置邮件
+  /v1/password-resets:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: resetPassword 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetPasswordResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      summary: 使用一次性令牌重置密码并撤销全部会话
+  /v1/account/password:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: changePassword 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangePasswordResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      summary: 重新确认当前密码后修改密码
+  /v1/account/email:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: changeEmail 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeEmailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - identity
+      operationId: changeEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEmailRequest"
+      summary: 重新确认当前密码后发起邮箱变更
+  /v1/teams:
+    get:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: listTeams 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListTeamsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: listTeams
+      summary: 列出当前账号可访问的团队
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createTeam 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTeamResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: createTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamRequest"
+      summary: 原子创建团队、首个成员和管理员角色
+  /v1/teams/{teamId}/members:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createMember 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: createMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberRequest"
+      summary: 创建未绑定团队成员
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+  /v1/teams/{teamId}/members/{memberId}:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: updateMember 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: updateMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      summary: 以期望修订号修改成员资料或生命周期
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/MemberId"
+  /v1/teams/{teamId}/invitations:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createInvitation 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateInvitationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: createInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      summary: 为固定成员和邮箱创建或重发邀请
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+  /v1/invitations/{token}/accept:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: acceptInvitation 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptInvitationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - teams
+      operationId: acceptInvitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInvitationRequest"
+      summary: 原子接受定向邀请
+      parameters:
+        - $ref: "#/components/parameters/InvitationToken"
+  /v1/teams/{teamId}/games:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createGameProject 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateGameProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - games
+      operationId: createGameProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameProjectRequest"
+      summary: 创建游戏项目及模板版本 1
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+  /v1/teams/{teamId}/games/{gameId}:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: updateGameProject 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateGameProjectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - games
+      operationId: updateGameProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGameProjectRequest"
+      summary: 修改或启停游戏项目
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/teams/{teamId}/games/{gameId}/profiles:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createGameProfile 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateGameProfileResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - games
+      operationId: createGameProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameProfileRequest"
+      summary: 幂等建立成员游戏档案
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/teams/{teamId}/games/{gameId}/profiles/{profileId}:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: updateGameProfile 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateGameProfileResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - games
+      operationId: updateGameProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGameProfileRequest"
+      summary: 修改允许范围内的游戏档案字段
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+        - $ref: "#/components/parameters/ProfileId"
+  /v1/teams/{teamId}/games/{gameId}/record-template:
+    put:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: updateRecordTemplate 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateRecordTemplateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - games
+      operationId: updateRecordTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecordTemplateRequest"
+      summary: 创建不可变的新记录模板版本
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/rooms:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: createRoom 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateRoomResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - rooms
+      operationId: createRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      summary: 为启用项目创建房间并成为主持人
+  /v1/rooms/{roomId}/participant-sessions:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: joinRoom 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - rooms
+      operationId: joinRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinRoomRequest"
+      summary: 使用房间密码建立独立参与者会话
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+  /v1/rooms/{roomId}/spectator-sessions:
+    post:
+      security:
+        - anonymousCsrf: []
+      responses:
+        "200":
+          description: joinRoomAsSpectator 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinRoomAsSpectatorResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - rooms
+      operationId: joinRoomAsSpectator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinSpectatorRequest"
+      summary: 使用观众令牌建立只读会话
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+  /v1/teams/{teamId}/games/{gameId}/history:
+    get:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: getGameHistory 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetGameHistoryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - reporting
+      operationId: getGameHistory
+      summary: 按时间、房间、成员、档案和状态筛选历史
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/teams/{teamId}/games/{gameId}/statistics:
+    get:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: getGameStatistics 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetGameStatisticsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - reporting
+      operationId: getGameStatistics
+      summary: 读取基于已确认最新有效版本的基础统计
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/teams/{teamId}/games/{gameId}/exports:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: 直接下载六张 CSV 长表。
+          headers:
+            Content-Disposition:
+              required: true
+              schema:
+                type: string
+                pattern: ^attachment;
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - reporting
+      operationId: exportGameRecords
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportGameRecordsRequest"
+      summary: 从同一一致读取点即时导出六张 CSV
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - $ref: "#/components/parameters/GameId"
+  /v1/avatars:
+    post:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: uploadAvatar 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadAvatarResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - avatars
+      operationId: uploadAvatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/AvatarUploadRequest"
+      summary: 上传并标准化为不可变静态 PNG
+  /v1/avatars/{avatarId}:
+    get:
+      security:
+        - accountSession: []
+          csrfToken: []
+      responses:
+        "200":
+          description: 经资源上下文鉴权后下载不可变 PNG。
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      tags:
+        - avatars
+      operationId: getAvatar
+      summary: 按资源上下文授权后读取头像
+      parameters:
+        - $ref: "#/components/parameters/AvatarId"
+        - $ref: "#/components/parameters/AvatarContext"
+  /v1/rooms/{roomId}/commands:
+    post:
+      tags:
+        - rooms
+      operationId: executeRoomCommand
+      summary: 执行类型化房间命令
+      description: 服务端先重新鉴权，再校验 expectedRevision。旧 revision 优先返回 409；相同 commandId、操作者及规范化请求指纹重试返回首次结果，不同操作者或指纹返回
+        IDEMPOTENCY_CONFLICT。合法但无变化的命令返回 changed=false，revision 不递增。
+      security:
+        - accountSession: []
+          csrfToken: []
+        - participantSession: []
+          csrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomCommand"
+            examples:
+              changedCommand:
+                summary: 改变状态并递增 revision
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                  expectedRevision: 8
+                  type: movePlayerCard
+                  payload:
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
+              noChangeCommand:
+                summary: 当前版本上的合法无变化命令
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f31-246c-7681-b6a6-974894a2c281
+                  expectedRevision: 9
+                  type: movePlayerCard
+                  payload:
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
+              staleRevision:
+                summary: 旧 revision，即使目标状态相同也返回 REVISION_CONFLICT
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f38-d1b9-73ea-a1a4-f49b9c686c82
+                  expectedRevision: 7
+                  type: movePlayerCard
+                  payload:
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f4b-889f-73aa-bb9d-e794cf237319
+              idempotencyFingerprintConflict:
+                summary: 复用 commandId 但请求指纹不同，返回 IDEMPOTENCY_CONFLICT
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                  expectedRevision: 8
+                  type: movePlayerCard
+                  payload:
+                    playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                    targetTeamId: 018f5f51-53f2-7f06-82d5-8308070dd815
+              multipleViolations:
+                summary: 多字段输入错误，返回 violations
+                x-schema-valid: false
+                value:
+                  roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                  commandId: not-a-uuid
+                  expectedRevision: -1
+                  type: movePlayerCard
+                  payload: {}
+      responses:
+        "200":
+          description: executeRoomCommand 专属成功结果。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecuteRoomCommandResponse"
+              examples:
+                changedResult:
+                  summary: 命令改变状态，revision 从请求的 8 递增到 9
+                  value:
+                    command:
+                      roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                      commandId: 018f5f2b-e0c2-7e80-baf1-7a05e7d9bfa2
+                      changed: true
+                      revision: 9
+                      type: movePlayerCard
+                      result:
+                        playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+                noChangeResult:
+                  summary: 命令未改变状态，revision 保持请求时的 9
+                  value:
+                    command:
+                      roomId: 018f5f1e-17d8-7a38-94d0-ecf3184ccf23
+                      commandId: 018f5f31-246c-7681-b6a6-974894a2c281
+                      changed: false
+                      revision: 9
+                      type: movePlayerCard
+                      result:
+                        playerCardId: 018f5f46-0cca-76d4-8a80-45a8c75b85e1
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /v1/rooms/{roomId}/snapshot:
+    get:
+      tags:
+        - rooms
+      operationId: getRoomSnapshot
+      summary: 读取当前角色的完整权威快照
+      description: 每次按当前访问凭据重新鉴权，从一致读取视图返回角色可见的完整状态与服务端计算 capability。Caddy、浏览器缓存或条件读取都不得作为状态恢复机制。
+      security:
+        - accountSession: []
+        - participantSession: []
+        - spectatorSession: []
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+      responses:
+        "200":
+          description: 按当前角色返回完整快照；Caddy、浏览器缓存和条件读取均不得作为恢复机制。
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum:
+                  - no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetRoomSnapshotResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /v1/rooms/{roomId}/events:
+    get:
+      tags:
+        - rooms
+      operationId: streamRoomInvalidations
+      summary: 订阅房间失效通知
+      description: 初连和重连均须读取完整快照校准。SSE 是低延迟提示而非领域事件、状态差量或 可靠历史；丢失、重复、迟到、乱序或跳号都通过快照恢复。401/404 是停止重连终态。
+      security:
+        - accountSession: []
+        - participantSession: []
+        - spectatorSession: []
+      parameters:
+        - $ref: "#/components/parameters/RoomId"
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: 可选提示；不保证历史补发，值为客户端最后处理的 revision。
+          schema:
+            type: string
+            pattern: ^[0-9]+$
+      responses:
+        "200":
+          description: 先订阅再读取当前 revision；通知不提供历史，初连与重连均读取完整快照校准。
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          x-sse-heartbeat-interval-seconds: 15
+          x-sse-heartbeat-format: ": heartbeat"
+          x-sse-event-id: revision
+          x-sse-subscription-order:
+            - subscribe
+            - read-current-revision
+            - send-current-revision
+          x-sse-listener-failure-action: close-stream-for-reconnect
+        "204":
+          description: 房间删除、不可见或访问不可恢复时返回；EventSource 将停止自动重连。
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      x-sse-terminal-response:
+        status: 204
+        action: stop-reconnecting
+      x-sse-auth-expiry-flow:
+        - close-stream
+        - refresh-access
+        - read-role-snapshot
+        - create-new-event-source
+      x-sse-reconnect-calibration:
+        - subscribe
+        - read-role-snapshot
+        - send-current-revision
+      x-sse-subscription-order:
+        - subscribe
+        - read-current-revision
+        - send-current-revision
+      x-sse-listener-failure-action: close-stream-for-reconnect
+components:
+  securitySchemes:
+    anonymousCsrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: 未登录浏览器的同源 CSRF 令牌。
+    accountSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-session
+      description: 登录会话；不缓存团队或房间角色。
+    participantSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-participant
+    spectatorSession:
+      type: apiKey
+      in: cookie
+      name: __Host-ttsync-spectator
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  parameters:
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TeamId:
+      name: teamId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProfileId:
+      name: profileId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InvitationToken:
+      name: token
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 512
+    AvatarId:
+      name: avatarId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AvatarContext:
+      name: context
+      in: query
+      required: true
+      description: 授权所依据的成员、房间、人员牌或历史快照资源 URI。
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+  schemas:
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+    Password:
+      type: string
+      minLength: 15
+      maxLength: 128
+      description: 15–128 个可打印 Unicode code point，不裁剪或静默截断。
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+    EmailRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+    TokenRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 512
+    RegisterAccountRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        password:
+          $ref: "#/components/schemas/Password"
+        invitationToken:
+          type: string
+          minLength: 32
+          maxLength: 512
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          $ref: "#/components/schemas/Email"
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - newPassword
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 512
+        newPassword:
+          $ref: "#/components/schemas/Password"
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+        newPassword:
+          $ref: "#/components/schemas/Password"
+    ChangeEmailRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - currentPassword
+        - newEmail
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 128
+        newEmail:
+          $ref: "#/components/schemas/Email"
+    CreateTeamRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    CreateMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+    UpdateMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedRevision
+        - action
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        action:
+          type: string
+          enum:
+            - updateProfile
+            - deactivate
+            - restore
+            - unbind
+            - leave
+            - grantAdmin
+            - revokeAdmin
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+    CreateInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - memberId
+        - email
+      properties:
+        memberId:
+          type: string
+          format: uuid
+        email:
+          $ref: "#/components/schemas/Email"
+    AcceptInvitationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedInvitationVersion
+      properties:
+        expectedInvitationVersion:
+          type: integer
+          minimum: 1
+    CreateGameProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    UpdateGameProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedRevision
+        - action
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        action:
+          type: string
+          enum:
+            - rename
+            - deactivate
+            - restore
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    CreateGameProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - memberId
+      properties:
+        memberId:
+          type: string
+          format: uuid
+    UpdateGameProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedRevision
+        - action
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        action:
+          type: string
+          enum:
+            - update
+            - deactivate
+            - restore
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 100
+    UpdateRecordTemplateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - expectedRevision
+        - fields
+      properties:
+        expectedRevision:
+          type: integer
+          minimum: 0
+        fields:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/TemplateField"
+    TemplateField:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - scope
+        - type
+        - required
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        scope:
+          type: string
+          enum:
+            - team
+            - player
+        type:
+          type: string
+          enum:
+            - number
+            - shortText
+            - singleChoice
+        required:
+          type: boolean
+        options:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+    CreateRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - gameId
+        - password
+      properties:
+        gameId:
+          type: string
+          format: uuid
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    JoinRoomRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - password
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+    JoinSpectatorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 512
+    ExportGameRecordsRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - from
+        - to
+        - statuses
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        statuses:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - draft
+              - confirmed
+              - voided
+    AvatarUploadRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - context
+        - expectedRevision
+        - file
+      properties:
+        context:
+          type: string
+          minLength: 1
+          maxLength: 512
+        expectedRevision:
+          type: integer
+          minimum: 0
+        file:
+          type: string
+          format: binary
+    RoomCommand:
+      oneOf:
+        - $ref: "#/components/schemas/TransferHostCommand"
+        - $ref: "#/components/schemas/TakeoverHostCommand"
+        - $ref: "#/components/schemas/RotateParticipantCredentialCommand"
+        - $ref: "#/components/schemas/RotateSpectatorLinkCommand"
+        - $ref: "#/components/schemas/DeleteRoomCommand"
+        - $ref: "#/components/schemas/RestoreRoomCommand"
+        - $ref: "#/components/schemas/CreatePlayerCardCommand"
+        - $ref: "#/components/schemas/UpdatePlayerCardCommand"
+        - $ref: "#/components/schemas/ClaimPlayerCardCommand"
+        - $ref: "#/components/schemas/ReleasePlayerCardCommand"
+        - $ref: "#/components/schemas/RevokePlayerCardClaimCommand"
+        - $ref: "#/components/schemas/MovePlayerCardCommand"
+        - $ref: "#/components/schemas/SetTeamCapacityCommand"
+        - $ref: "#/components/schemas/CreateGameRecordCommand"
+        - $ref: "#/components/schemas/UpdateGameRecordCommand"
+        - $ref: "#/components/schemas/SetRoomStatusCommand"
+      discriminator:
+        propertyName: type
+        mapping:
+          transferHost: "#/components/schemas/TransferHostCommand"
+          takeoverHost: "#/components/schemas/TakeoverHostCommand"
+          rotateParticipantCredential: "#/components/schemas/RotateParticipantCredentialCommand"
+          rotateSpectatorLink: "#/components/schemas/RotateSpectatorLinkCommand"
+          deleteRoom: "#/components/schemas/DeleteRoomCommand"
+          restoreRoom: "#/components/schemas/RestoreRoomCommand"
+          createPlayerCard: "#/components/schemas/CreatePlayerCardCommand"
+          updatePlayerCard: "#/components/schemas/UpdatePlayerCardCommand"
+          claimPlayerCard: "#/components/schemas/ClaimPlayerCardCommand"
+          releasePlayerCard: "#/components/schemas/ReleasePlayerCardCommand"
+          revokePlayerCardClaim: "#/components/schemas/RevokePlayerCardClaimCommand"
+          movePlayerCard: "#/components/schemas/MovePlayerCardCommand"
+          setTeamCapacity: "#/components/schemas/SetTeamCapacityCommand"
+          createGameRecord: "#/components/schemas/CreateGameRecordCommand"
+          updateGameRecord: "#/components/schemas/UpdateGameRecordCommand"
+          setRoomStatus: "#/components/schemas/SetRoomStatusCommand"
+      properties:
+        type:
+          type: string
+          enum:
+            - transferHost
+            - takeoverHost
+            - rotateParticipantCredential
+            - rotateSpectatorLink
+            - deleteRoom
+            - restoreRoom
+            - createPlayerCard
+            - updatePlayerCard
+            - claimPlayerCard
+            - releasePlayerCard
+            - revokePlayerCardClaim
+            - movePlayerCard
+            - setTeamCapacity
+            - createGameRecord
+            - updateGameRecord
+            - setRoomStatus
+    MovePlayerCardCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: movePlayerCard
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+            - targetTeamId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+            targetTeamId:
+              type:
+                - string
+                - "null"
+              format: uuid
+    ClaimPlayerCardCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: claimPlayerCard
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    ReleasePlayerCardCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: releasePlayerCard
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    SetTeamCapacityCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: setTeamCapacity
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - teamId
+            - capacity
+          properties:
+            teamId:
+              type: string
+              format: uuid
+            capacity:
+              type: integer
+              minimum: 1
+    CreatePlayerCardCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: createPlayerCard
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - source
+            - displayName
+          properties:
+            source:
+              type: string
+              enum:
+                - member
+                - guest
+            displayName:
+              type: string
+              minLength: 1
+    CreateGameRecordCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: createGameRecord
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playedAt
+          properties:
+            playedAt:
+              type: string
+              format: date-time
+    UpdateGameRecordCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: updateGameRecord
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - recordId
+            - action
+            - reason
+          properties:
+            recordId:
+              type: string
+              format: uuid
+            action:
+              type: string
+              enum:
+                - save
+                - confirm
+                - correct
+                - void
+                - restore
+            reason:
+              type:
+                - string
+                - "null"
+    SetRoomStatusCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: setRoomStatus
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - status
+          properties:
+            status:
+              type: string
+              enum:
+                - open
+                - ended
+    RoomCommandResult:
+      oneOf:
+        - $ref: "#/components/schemas/TransferHostResult"
+        - $ref: "#/components/schemas/TakeoverHostResult"
+        - $ref: "#/components/schemas/RotateParticipantCredentialResult"
+        - $ref: "#/components/schemas/RotateSpectatorLinkResult"
+        - $ref: "#/components/schemas/DeleteRoomResult"
+        - $ref: "#/components/schemas/RestoreRoomResult"
+        - $ref: "#/components/schemas/CreatePlayerCardResult"
+        - $ref: "#/components/schemas/UpdatePlayerCardResult"
+        - $ref: "#/components/schemas/ClaimPlayerCardResult"
+        - $ref: "#/components/schemas/ReleasePlayerCardResult"
+        - $ref: "#/components/schemas/RevokePlayerCardClaimResult"
+        - $ref: "#/components/schemas/MovePlayerCardResult"
+        - $ref: "#/components/schemas/SetTeamCapacityResult"
+        - $ref: "#/components/schemas/CreateGameRecordResult"
+        - $ref: "#/components/schemas/UpdateGameRecordResult"
+        - $ref: "#/components/schemas/SetRoomStatusResult"
+      discriminator:
+        propertyName: type
+        mapping:
+          transferHost: "#/components/schemas/TransferHostResult"
+          takeoverHost: "#/components/schemas/TakeoverHostResult"
+          rotateParticipantCredential: "#/components/schemas/RotateParticipantCredentialResult"
+          rotateSpectatorLink: "#/components/schemas/RotateSpectatorLinkResult"
+          deleteRoom: "#/components/schemas/DeleteRoomResult"
+          restoreRoom: "#/components/schemas/RestoreRoomResult"
+          createPlayerCard: "#/components/schemas/CreatePlayerCardResult"
+          updatePlayerCard: "#/components/schemas/UpdatePlayerCardResult"
+          claimPlayerCard: "#/components/schemas/ClaimPlayerCardResult"
+          releasePlayerCard: "#/components/schemas/ReleasePlayerCardResult"
+          revokePlayerCardClaim: "#/components/schemas/RevokePlayerCardClaimResult"
+          movePlayerCard: "#/components/schemas/MovePlayerCardResult"
+          setTeamCapacity: "#/components/schemas/SetTeamCapacityResult"
+          createGameRecord: "#/components/schemas/CreateGameRecordResult"
+          updateGameRecord: "#/components/schemas/UpdateGameRecordResult"
+          setRoomStatus: "#/components/schemas/SetRoomStatusResult"
+      properties:
+        type:
+          type: string
+          enum:
+            - transferHost
+            - takeoverHost
+            - rotateParticipantCredential
+            - rotateSpectatorLink
+            - deleteRoom
+            - restoreRoom
+            - createPlayerCard
+            - updatePlayerCard
+            - claimPlayerCard
+            - releasePlayerCard
+            - revokePlayerCardClaim
+            - movePlayerCard
+            - setTeamCapacity
+            - createGameRecord
+            - updateGameRecord
+            - setRoomStatus
+    RoomCommandResultBase:
+      type: object
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+    MovePlayerCardResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: movePlayerCard
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    ClaimPlayerCardResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: claimPlayerCard
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    ReleasePlayerCardResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: releasePlayerCard
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    SetTeamCapacityResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: setTeamCapacity
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - teamId
+            - overCapacityBy
+          properties:
+            teamId:
+              type: string
+              format: uuid
+            overCapacityBy:
+              type: integer
+              minimum: 0
+    CreatePlayerCardResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: createPlayerCard
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    CreateGameRecordResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: createGameRecord
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - recordId
+          properties:
+            recordId:
+              type: string
+              format: uuid
+    UpdateGameRecordResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: updateGameRecord
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - recordId
+          properties:
+            recordId:
+              type: string
+              format: uuid
+    SetRoomStatusResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: setRoomStatus
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - state
+          properties:
+            state:
+              type: string
+              enum:
+                - open
+                - ended
+    RoomSnapshot:
+      oneOf:
+        - $ref: "#/components/schemas/HostRoomSnapshot"
+        - $ref: "#/components/schemas/ParticipantRoomSnapshot"
+        - $ref: "#/components/schemas/SpectatorRoomSnapshot"
+      discriminator:
+        propertyName: role
+        mapping:
+          host: "#/components/schemas/HostRoomSnapshot"
+          participant: "#/components/schemas/ParticipantRoomSnapshot"
+          spectator: "#/components/schemas/SpectatorRoomSnapshot"
+    RoomTeam:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - capacity
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        capacity:
+          type: integer
+          minimum: 1
+    PlayerCard:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - displayName
+        - teamId
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        teamId:
+          type:
+            - string
+            - "null"
+    RoomRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - confirmed
+            - voided
+    RoomCapability:
+      type: string
+      enum:
+        - transferHost
+        - manageRoom
+        - managePlayerCards
+        - manageTeams
+        - manageRecords
+        - claimPlayerCard
+        - releasePlayerCard
+        - editClaimedPlayerCard
+        - readRoom
+    HostRoomSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - revision
+        - status
+        - teams
+        - playerCards
+        - records
+        - claims
+        - capabilities
+        - role
+        - managementSecrets
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum:
+            - open
+            - ended
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomTeam"
+        playerCards:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerCard"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomRecord"
+        claims:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomClaim"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomCapability"
+          uniqueItems: true
+        role:
+          type: string
+          const: host
+        managementSecrets:
+          $ref: "#/components/schemas/RoomManagementSecrets"
+    ParticipantRoomSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - revision
+        - status
+        - teams
+        - playerCards
+        - records
+        - claims
+        - capabilities
+        - role
+        - participantSession
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum:
+            - open
+            - ended
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomTeam"
+        playerCards:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerCard"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomRecord"
+        claims:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomClaim"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomCapability"
+          uniqueItems: true
+        role:
+          type: string
+          const: participant
+        participantSession:
+          $ref: "#/components/schemas/ParticipantSessionView"
+    SpectatorRoomSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - revision
+        - status
+        - teams
+        - playerCards
+        - records
+        - claims
+        - capabilities
+        - role
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum:
+            - open
+            - ended
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomTeam"
+        playerCards:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerCard"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomRecord"
+        claims:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomClaim"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomCapability"
+          uniqueItems: true
+        role:
+          type: string
+          const: spectator
+    Violation:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - code
+        - message
+      properties:
+        path:
+          type: string
+          description: 指向无效输入的 JSON Pointer。
+          pattern: ^/
+        code:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]*$
+        message:
+          type: string
+          minLength: 1
+    ProblemDetails:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+    UnauthorizedProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 401
+        code:
+          type: string
+          const: UNAUTHORIZED
+    ForbiddenProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 403
+        code:
+          type: string
+          const: FORBIDDEN
+    ValidationProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+        - violations
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 422
+        code:
+          type: string
+          const: VALIDATION_FAILED
+        violations:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Violation"
+    InternalErrorProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 500
+        code:
+          type: string
+          const: INTERNAL_ERROR
+    RateLimitedProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 429
+        code:
+          type: string
+          const: RATE_LIMITED
+    TeamSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+    MemberSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - displayName
+        - revision
+        - enabled
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          minLength: 1
+        revision:
+          type: integer
+          minimum: 0
+        enabled:
+          type: boolean
+    InvitationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - memberId
+        - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+    GameProjectSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - enabled
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+    GameProfileSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - memberId
+        - gameId
+        - revision
+      properties:
+        id:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        gameId:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+    RecordTemplateSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - fields
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateField"
+    RoomSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum:
+            - open
+            - ended
+            - deleted
+    ParticipantSessionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - roomId
+        - credentialGeneration
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        credentialGeneration:
+          type: integer
+          minimum: 1
+    SpectatorSessionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - roomId
+        - expiresAt
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    HistoryRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - recordId
+        - roundNumber
+        - status
+      properties:
+        recordId:
+          type: string
+          format: uuid
+        roundNumber:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - draft
+            - confirmed
+            - void
+    GameStatistics:
+      type: object
+      additionalProperties: false
+      required:
+        - confirmedRecordCount
+        - firstPlayedAt
+        - lastPlayedAt
+      properties:
+        confirmedRecordCount:
+          type: integer
+          minimum: 0
+        firstPlayedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastPlayedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AvatarAsset:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - mediaType
+        - width
+        - height
+      properties:
+        id:
+          type: string
+          format: uuid
+        mediaType:
+          type: string
+          const: image/png
+        width:
+          type: integer
+          minimum: 1
+          maximum: 512
+        height:
+          type: integer
+          minimum: 1
+          maximum: 512
+    RegisterAccountResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accountId
+        - verificationRequired
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        verificationRequired:
+          type: boolean
+    ResendVerificationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accepted
+      properties:
+        accepted:
+          type: boolean
+    VerifyEmailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - verified
+      properties:
+        verified:
+          type: boolean
+    GetSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - email
+        - emailVerified
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        emailVerified:
+          type: boolean
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - expiresAt
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+    LogoutResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - revoked
+      properties:
+        revoked:
+          type: boolean
+    LogoutAllSessionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - revokedSessionCount
+      properties:
+        revokedSessionCount:
+          type: integer
+          minimum: 0
+    RequestPasswordResetResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accepted
+      properties:
+        accepted:
+          type: boolean
+    ResetPasswordResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionsRevoked
+      properties:
+        sessionsRevoked:
+          type: boolean
+    ChangePasswordResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionsRevoked
+      properties:
+        sessionsRevoked:
+          type: boolean
+    ChangeEmailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - confirmationRequired
+      properties:
+        confirmationRequired:
+          type: boolean
+    ListTeamsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - teams
+      properties:
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamSummary"
+    CreateTeamResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - team
+      properties:
+        team:
+          $ref: "#/components/schemas/TeamSummary"
+    CreateMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - member
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberSummary"
+    UpdateMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - member
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberSummary"
+    CreateInvitationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - invitation
+      properties:
+        invitation:
+          $ref: "#/components/schemas/InvitationSummary"
+    AcceptInvitationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - member
+      properties:
+        member:
+          $ref: "#/components/schemas/MemberSummary"
+    CreateGameProjectResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - game
+      properties:
+        game:
+          $ref: "#/components/schemas/GameProjectSummary"
+    UpdateGameProjectResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - game
+      properties:
+        game:
+          $ref: "#/components/schemas/GameProjectSummary"
+    CreateGameProfileResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - profile
+      properties:
+        profile:
+          $ref: "#/components/schemas/GameProfileSummary"
+    UpdateGameProfileResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - profile
+      properties:
+        profile:
+          $ref: "#/components/schemas/GameProfileSummary"
+    UpdateRecordTemplateResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - template
+      properties:
+        template:
+          $ref: "#/components/schemas/RecordTemplateSummary"
+    CreateRoomResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - room
+      properties:
+        room:
+          $ref: "#/components/schemas/RoomSummary"
+    JoinRoomResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - participantSession
+      properties:
+        participantSession:
+          $ref: "#/components/schemas/ParticipantSessionSummary"
+    JoinRoomAsSpectatorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - spectatorSession
+      properties:
+        spectatorSession:
+          $ref: "#/components/schemas/SpectatorSessionSummary"
+    GetGameHistoryResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - records
+        - nextCursor
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryRecord"
+        nextCursor:
+          type:
+            - string
+            - "null"
+    GetGameStatisticsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - statistics
+      properties:
+        statistics:
+          $ref: "#/components/schemas/GameStatistics"
+    UploadAvatarResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - avatar
+      properties:
+        avatar:
+          $ref: "#/components/schemas/AvatarAsset"
+    ExecuteRoomCommandResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - command
+      properties:
+        command:
+          $ref: "#/components/schemas/RoomCommandResult"
+    GetRoomSnapshotResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshot
+      properties:
+        snapshot:
+          $ref: "#/components/schemas/RoomSnapshot"
+    TransferHostCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: transferHost
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - targetMemberId
+          properties:
+            targetMemberId:
+              type: string
+              format: uuid
+    TransferHostResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: transferHost
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - hostMemberId
+          properties:
+            hostMemberId:
+              type: string
+              format: uuid
+    TakeoverHostCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: takeoverHost
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - administratorMemberId
+          properties:
+            administratorMemberId:
+              type: string
+              format: uuid
+    TakeoverHostResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: takeoverHost
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - hostMemberId
+          properties:
+            hostMemberId:
+              type: string
+              format: uuid
+    RotateParticipantCredentialCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: rotateParticipantCredential
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - reason
+          properties:
+            reason:
+              type: string
+              minLength: 1
+    RotateParticipantCredentialResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: rotateParticipantCredential
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - credentialGeneration
+          properties:
+            credentialGeneration:
+              type: integer
+              minimum: 1
+    RotateSpectatorLinkCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: rotateSpectatorLink
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - mode
+          properties:
+            mode:
+              type: string
+              enum:
+                - graceful
+                - emergency
+    RotateSpectatorLinkResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: rotateSpectatorLink
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - spectatorUrl
+            - previousValidUntil
+          properties:
+            spectatorUrl:
+              type: string
+              format: uri
+            previousValidUntil:
+              type:
+                - string
+                - "null"
+              format: date-time
+    DeleteRoomCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: deleteRoom
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - reason
+          properties:
+            reason:
+              type: string
+              minLength: 1
+    DeleteRoomResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: deleteRoom
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - state
+          properties:
+            state:
+              type: string
+              enum:
+                - deleted
+                - restored
+    RestoreRoomCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: restoreRoom
+        payload:
+          type: object
+          additionalProperties: false
+          required: []
+          properties: {}
+    RestoreRoomResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: restoreRoom
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - state
+          properties:
+            state:
+              type: string
+              enum:
+                - deleted
+                - restored
+    UpdatePlayerCardCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: updatePlayerCard
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+            - displayName
+            - avatarId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+            displayName:
+              type: string
+              minLength: 1
+            avatarId:
+              type:
+                - string
+                - "null"
+              format: uuid
+    UpdatePlayerCardResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: updatePlayerCard
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    RevokePlayerCardClaimCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - expectedRevision
+        - type
+        - payload
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        expectedRevision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: revokePlayerCardClaim
+        payload:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    RevokePlayerCardClaimResult:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - commandId
+        - changed
+        - revision
+        - type
+        - result
+      properties:
+        roomId:
+          type: string
+          format: uuid
+        commandId:
+          type: string
+          format: uuid
+        changed:
+          type: boolean
+        revision:
+          type: integer
+          minimum: 0
+        type:
+          type: string
+          const: revokePlayerCardClaim
+        result:
+          type: object
+          additionalProperties: false
+          required:
+            - playerCardId
+          properties:
+            playerCardId:
+              type: string
+              format: uuid
+    RoomClaim:
+      type: object
+      additionalProperties: false
+      required:
+        - playerCardId
+        - claimed
+      properties:
+        playerCardId:
+          type: string
+          format: uuid
+        claimed:
+          type: boolean
+        claimedByCurrentParticipant:
+          type: boolean
+    RoomManagementSecrets:
+      type: object
+      additionalProperties: false
+      required:
+        - participantCredentialGeneration
+        - spectatorLinkGeneration
+      properties:
+        participantCredentialGeneration:
+          type: integer
+          minimum: 1
+        spectatorLinkGeneration:
+          type: integer
+          minimum: 1
+    ParticipantSessionView:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - claimedPlayerCardId
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        claimedPlayerCardId:
+          type:
+            - string
+            - "null"
+          format: uuid
+    MalformedRequestProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 400
+        code:
+          type: string
+          const: MALFORMED_REQUEST
+    ResourceNotFoundProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 404
+        code:
+          type: string
+          const: RESOURCE_NOT_FOUND
+    RoomNotFoundProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 404
+        code:
+          type: string
+          const: ROOM_NOT_FOUND
+    RevisionConflictProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+        - currentRevision
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 409
+        code:
+          type: string
+          const: REVISION_CONFLICT
+        currentRevision:
+          type: integer
+          minimum: 0
+    IdempotencyConflictProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 409
+        code:
+          type: string
+          const: IDEMPOTENCY_CONFLICT
+    StateConflictProblem:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - detail
+        - instance
+        - requestId
+        - status
+        - code
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          minLength: 1
+        instance:
+          type: string
+          format: uri-reference
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: integer
+          const: 409
+        code:
+          type: string
+          const: STATE_CONFLICT
+  responses:
+    BadRequest:
+      description: 请求语法、JSON 或媒体类型无法解析（400）
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/MalformedRequestProblem"
+          example:
+            type: https://ttsync.example/problems/malformed-request
+            title: 请求无法解析
+            status: 400
+            detail: JSON 请求体不完整。
+            instance: /problems/req-400
+            code: MALFORMED_REQUEST
+            requestId: 018f5f60-c9c7-77e3-a6bb-08de53542952
+    Unauthorized:
+      description: 访问凭据缺失、无效或过期（401）
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/UnauthorizedProblem"
+          example:
+            type: https://ttsync.example/problems/unauthorized
+            title: 需要有效凭据
+            status: 401
+            detail: 房间访问凭据缺失或已过期。
+            instance: /problems/req-401
+            code: UNAUTHORIZED
+            requestId: 018f5f65-7191-71fd-b8a6-15c0c019d690
+    Forbidden:
+      description: 有效身份缺少当前操作权限（403）
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ForbiddenProblem"
+          example:
+            type: https://ttsync.example/problems/forbidden
+            title: 没有操作权限
+            status: 403
+            detail: 当前角色没有此 capability。
+            instance: /problems/req-403
+            code: FORBIDDEN
+            requestId: 018f5f6a-38c4-74a2-b0bb-eaf01a5d8f73
+    NotFound:
+      description: 资源不存在或对调用者不可见（404）
+      content:
+        application/problem+json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ResourceNotFoundProblem"
+              - $ref: "#/components/schemas/RoomNotFoundProblem"
+            discriminator:
+              propertyName: code
+          example:
+            type: https://ttsync.example/problems/not-found
+            title: 房间不可见
+            status: 404
+            detail: 房间不存在或当前凭据不能查看。
+            instance: /problems/req-404
+            code: ROOM_NOT_FOUND
+            requestId: 018f5f6f-80ae-7df8-9d5d-12277f280c57
+    Conflict:
+      description: 版本、幂等指纹/操作者或资源状态冲突（409）
+      content:
+        application/problem+json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/RevisionConflictProblem"
+              - $ref: "#/components/schemas/IdempotencyConflictProblem"
+              - $ref: "#/components/schemas/StateConflictProblem"
+            discriminator:
+              propertyName: code
+          examples:
+            revisionConflict:
+              value:
+                type: https://ttsync.example/problems/revision-conflict
+                title: 房间已更新
+                status: 409
+                detail: 操作未应用，房间已更新。
+                instance: /problems/req-1
+                code: REVISION_CONFLICT
+                requestId: 018f5f74-ddcb-76ef-8164-dfd82e2d96d8
+                currentRevision: 9
+            idempotencyConflict:
+              value:
+                type: https://ttsync.example/problems/idempotency-conflict
+                title: 命令标识冲突
+                status: 409
+                detail: commandId 已由不同操作者或请求指纹使用。
+                instance: /problems/req-2
+                code: IDEMPOTENCY_CONFLICT
+                requestId: 018f5f79-c84d-78f9-a50d-64b408158267
+    UnprocessableEntity:
+      description: 语法可解析但输入不满足合同或领域规则（422）
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ValidationProblem"
+          example:
+            type: https://ttsync.example/problems/validation-failed
+            title: 输入校验失败
+            status: 422
+            detail: 两个字段无效。
+            instance: /problems/req-3
+            code: VALIDATION_FAILED
+            requestId: 018f5f7f-b80c-711a-965b-ce09e4e75ba8
+            violations:
+              - path: /commandId
+                code: INVALID_UUID
+                message: 必须是 UUID。
+              - path: /expectedRevision
+                code: OUT_OF_RANGE
+                message: 必须大于或等于 0。
+    TooManyRequests:
+      description: 请求超过限速（429）；调用者应遵循 Retry-After
+      headers:
+        Retry-After:
+          required: true
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/RateLimitedProblem"
+          example:
+            type: https://ttsync.example/problems/rate-limited
+            title: 请求过于频繁
+            status: 429
+            detail: 请在 Retry-After 指定时间后重试。
+            instance: /problems/req-429
+            code: RATE_LIMITED
+            requestId: 018f5f84-e090-799c-8cf4-d7a22a0bfa67
+    InternalServerError:
+      description: 未预期的服务端失败（500）
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/InternalErrorProblem"
+          example:
+            type: https://ttsync.example/problems/internal-error
+            title: 服务暂时失败
+            status: 500
+            detail: 请求未能完成，请使用 requestId 联系维护者。
+            instance: /problems/req-500
+            code: INTERNAL_ERROR
+            requestId: 018f5f89-d59a-7e09-97c2-ca37b778be7d

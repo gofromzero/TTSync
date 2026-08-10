@@ -10,6 +10,7 @@
 Thumbs.db
 
 # Temporary files
+node_modules/
 *.log
 *.tmp
 *.swp
