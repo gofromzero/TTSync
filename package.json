@@ -12,7 +12,7 @@
     "db:generate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-sqlc.ps1",
     "db:migrate:test": "go run ./cmd/migrate",
     "test:go": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-go.ps1",
-    "web:typecheck": "npm --prefix clients/web run typecheck",
+    "web:typecheck": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-web.ps1 -TypecheckOnly",
     "web:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-web.ps1",
     "smoke:b01": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-b01.ps1"
   },
