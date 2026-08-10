@@ -75,6 +75,37 @@
 
   Expected: FAIL，仅因尚未创建的产品/部署文件，不得因测试语法失败。
 
+### Task 1B: 封闭首次导航采集与模板点击表达式
+
+**Files:**
+- Modify: `test/b01-architecture.test.mjs`
+
+**Interfaces:**
+- Consumes: Task 1 的 browser smoke AST validator 与 Vue 空壳允许面。
+- Produces: 对首次导航监听顺序和三角色本地状态切换的确定性正控/负控。
+
+- [ ] **Step 1: 写首次导航绕过 RED**
+
+  增加 fixture：先以变量初始化执行 `await page.goto('https://localhost:8443')`，之后注册 request/console listener，再追加一个合规顶层 `goto`。旧 validator 必须错误放行该 fixture，从而形成 RED。
+
+- [ ] **Step 2: 写模板表达式绕过 RED**
+
+  使用允许的 `<button role="tab">` fixture，在 `@click` 中分别调用 `navigator.sendBeacon('/audit')` 与 `location.assign('https://example.test')`。旧 validator 必须错误放行，而不是因不允许的元素或脚本声明间接失败。
+
+- [ ] **Step 3: 最小 GREEN browser 顺序允许面**
+
+  AST 必须在全文件恰好发现一次 `page.goto`；该调用必须是顶层 awaited expression，且 request/console collectors 的声明和 listener 注册均早于它；不得通过变量初始化、嵌套函数或第二个 decoy `goto` 绕过。
+
+- [ ] **Step 4: 最小 GREEN Vue 点击允许面**
+
+  三个 tab 的 `@click` 值只允许 `activeRole = 'host'`、`activeRole = 'participant'`、`activeRole = 'spectator'`；拒绝函数调用、属性链、全局对象或 URL。合法 Vue 正控必须包含三条赋值并通过。
+
+- [ ] **Step 5: 验证并提交**
+
+  Run: `node --test --test-name-pattern="validator|首次导航|模板表达式" test/b01-architecture.test.mjs`
+
+  Expected: PASS，合法正控通过，四个点名负例被拒绝；随后运行 contracts 19 项、MVP 44 负例及 `git diff --check`，中文提交。
+
 ### Task 2: 建立 Go composition root、Chi 健康 seam 与真实 pgx readiness
 
 **Files:**
