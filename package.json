@@ -3,11 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:contracts && npm run test:mvp-acceptance",
+    "test": "npm run test:contracts && npm run test:mvp-acceptance && npm run test:b01:structure",
     "test:contracts": "node --test",
     "test:mvp-acceptance": "node scripts/validate-mvp-acceptance.mjs",
+    "test:b01:structure": "node --test test/b01-architecture.test.mjs",
     "contracts:generate": "node scripts/generate-contract-types.mjs",
-    "contracts:check": "node scripts/check-contracts.mjs"
+    "contracts:check": "node scripts/check-contracts.mjs",
+    "db:generate": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-sqlc.ps1",
+    "db:migrate:test": "go run ./cmd/migrate",
+    "test:go": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-go.ps1",
+    "web:typecheck": "npm --prefix clients/web run typecheck",
+    "web:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-web.ps1",
+    "smoke:b01": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-b01.ps1"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "10.1.1",
