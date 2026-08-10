@@ -937,7 +937,7 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/JoinRoomRequest"
-      summary: 使用房间密码建立独立参与者会话
+      summary: 使用房间密码建立独立房间访问会话
       parameters:
         - $ref: "#/components/parameters/RoomId"
   /v1/rooms/{roomId}/spectator-sessions:

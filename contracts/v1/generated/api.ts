@@ -356,7 +356,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 使用房间密码建立独立参与者会话 */
+        /** 使用房间密码建立独立房间访问会话 */
         post: operations["joinRoom"];
         delete?: never;
         options?: never;

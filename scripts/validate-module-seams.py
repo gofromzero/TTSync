@@ -374,14 +374,19 @@ def main() -> int:
 
     validate_cross_module_scenarios(spec, failures)
 
-    for term in ("账号", "成员", "登录会话", "参与者会话", "认领", "团队", "队伍", "房间快照", "对局快照"):
+    for source_name, source in (("模块 seam", spec), ("CONTEXT.md", context)):
+        for deprecated in ("参与者会话", "participant session"):
+            if deprecated.lower() in source.lower():
+                failures.append(f"{source_name} 使用旧词 {deprecated}，应统一为房间访问会话")
+
+    for term in ("账号", "成员", "登录会话", "房间访问会话", "认领", "团队", "队伍", "房间快照", "对局快照"):
         require(spec, re.escape(term), f"分离术语 {term}", failures)
         require(context, rf"^\*\*{re.escape(term)}\*\*:", f"CONTEXT.md 术语 {term}", failures)
 
     ownership_rows = {
         "identity": "账号、密码、邮箱状态、验证／恢复令牌、登录会话",
         "team": "团队、团队管理员、成员、账号绑定、邀请、游戏项目、游戏档案、记录模板、成员修订号、成员与游戏档案的长期头像引用",
-        "activity": "房间、主持权、参与者会话、观众会话、人员牌、访客牌、认领、队伍、容量、对局记录、房间修订号、房间快照、对局快照、房间内头像引用",
+        "activity": "房间、主持权、房间访问会话、观众会话、人员牌、访客牌、认领、队伍、容量、对局记录、房间修订号、房间快照、对局快照、房间内头像引用",
         "reporting": "历史查询、基础统计、六表 CSV 导出的只读模型",
     }
     for owner, facts in ownership_rows.items():

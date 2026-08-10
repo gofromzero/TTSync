@@ -58,6 +58,12 @@ test('公开合同可由标准解析器独立解析', async () => {
   assert.equal(api.info.version, '1.0.0');
 });
 
+test('公开合同使用统一的房间访问会话术语', async () => {
+  const source = await readFile(openapiPath, 'utf8');
+  assert.match(source, /房间访问会话/);
+  assert.doesNotMatch(source, /参与者会话|participant session/i);
+});
+
 test('生成与漂移检查复用同一个纯类型生成 seam', async () => {
   for (const path of [generateScriptPath, checkScriptPath]) {
     const source = await readFile(path, 'utf8');
