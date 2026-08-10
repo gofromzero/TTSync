@@ -416,9 +416,15 @@ function assertClientAllowedSurface(sources) {
   const allowedElements = new Set(['main', 'header', 'section', 'div', 'h1', 'p', 'nav', 'button', 'span', 'strong']);
   const allowedAttributes = new Set(['class', 'id', 'type', 'role', 'tabindex', 'aria-label', 'aria-selected', 'aria-controls', 'v-for', 'v-if', 'v-else-if', 'v-else', ':key', ':class', ':aria-selected', '@click']);
   const urlAttributes = new Set(['href', 'src', 'srcset', 'action', 'formaction', 'poster', 'xlink:href']);
+  const tabClickExpressions = [];
   for (const match of templateMatch[1].matchAll(/<\s*(\/)?([A-Za-z][\w-]*)([^>]*)>/g)) {
     if (match[1]) continue;
     assert.ok(allowedElements.has(match[2]), `App.vue template 元素不在允许面：${match[2]}`);
+    const clickMatch = match[3].match(/@click\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    if (clickMatch) {
+      assert.ok(match[2] === 'button' && /\brole\s*=\s*(?:"tab"|'tab')/.test(match[3]), 'App.vue @click 只允许三角色 tab');
+      tabClickExpressions.push(clickMatch[1] ?? clickMatch[2]);
+    }
     const remainder = match[3].replace(/([:@]?[A-Za-z_][\w:.-]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'))?/g, (attribute, name) => {
       assert.ok(!urlAttributes.has(name), `App.vue template 不允许任何 URL scheme：${name}`);
       assert.ok(allowedAttributes.has(name), `App.vue template 属性不在允许面：${name}`);
@@ -426,6 +432,11 @@ function assertClientAllowedSurface(sources) {
     });
     assert.equal(remainder.trim(), '', `App.vue template 属性语法不在允许面：${remainder.trim()}`);
   }
+  assert.deepEqual(
+    tabClickExpressions.sort(),
+    ["activeRole = 'host'", "activeRole = 'participant'", "activeRole = 'spectator'"].sort(),
+    'App.vue 三角色 tab 的 @click 只允许精确本地 activeRole 赋值',
+  );
   assert.doesNotMatch(sources['style.css'], /@(?:import|font-face)|\burl\s*\(|\bexpression\s*\(/i, 'style.css 不允许外链或可执行资源');
 }
 
@@ -768,8 +779,14 @@ function assertBrowserSmokeAllowedSurface(source) {
   const callRecords = topLevelCallRecords(sourceFile);
   const calls = callRecords.map(({ call }) => call);
   const callPosition = (target) => callRecords.find(({ call }) => call === target)?.index;
-  const gotoCall = calls.find((call) => propertyCall(call, pageName, 'goto'));
-  assert.ok(gotoCall, '浏览器 smoke 必须调用 page.goto');
+  const gotoCalls = nodesUnder(sourceFile).filter((node) => ts.isCallExpression(node) && propertyCall(node, pageName, 'goto'));
+  assert.equal(gotoCalls.length, 1, '浏览器 smoke 全文件只能调用一次 page.goto');
+  const [gotoCall] = gotoCalls;
+  const gotoStatements = sourceFile.statements.filter((statement) => ts.isExpressionStatement(statement)
+    && ts.isAwaitExpression(statement.expression)
+    && propertyCall(statement.expression, pageName, 'goto'));
+  assert.equal(gotoStatements.length, 1, 'page.goto 必须是顶层 awaited expression');
+  assert.equal(unwrappedExpression(gotoStatements[0].expression), gotoCall, 'page.goto 不得藏在变量初始化或嵌套函数中');
   const gotoArgument = gotoCall.arguments[0];
   assert.ok(gotoArgument, 'page.goto 必须提供 HTTPS URL');
   const gotoSource = ts.isIdentifier(gotoArgument) ? bindings.get(gotoArgument.text) : gotoArgument;
@@ -1045,6 +1062,14 @@ await browser.close();`;
   for (const [name, source] of [
     ['缺 Playwright import', validSmoke.replace("import { chromium } from 'playwright';\n", '')],
     ['缺 HTTPS goto', validSmoke.replace("await page.goto('https://localhost:8443');\n", '')],
+    ['变量初始化中的首次导航与后置 decoy goto', validSmoke.replace(
+      'const consoleErrors = [];',
+      "const firstNavigation = await page.goto('https://localhost:8443');\nconst consoleErrors = [];",
+    )],
+    ['嵌套函数中的隐藏 goto', validSmoke.replace(
+      'const consoleErrors = [];',
+      "async function hideNavigation() { await page.goto('https://localhost:8443'); }\nconst consoleErrors = [];",
+    )],
     ['goto 早于 request listener', validSmoke.replace("await page.goto('https://localhost:8443');\n", '').replace('const requests = [];\n', "await page.goto('https://localhost:8443');\nconst requests = [];\n")],
     ['缺 DOM role 读取', validSmoke.replace("const interactiveControls = await page.getByRole('tab').allTextContents();\n", 'const interactiveControls = expectedInteractiveControls;\n')],
     ['请求监听未采集', validSmoke.replace("(request) => {\n  if (!request.url().startsWith('https://localhost:8443')) requests.push(request.url());\n}", '() => {}')],
@@ -1062,16 +1087,17 @@ test('客户端源码 validator 采用空壳能力允许面', () => {
   const validSources = {
     'App.vue': `<script setup lang="ts">
 import { ref } from 'vue';
-const views = ['主持人视图', '参与者视图', '观众视图'];
-const activeView = ref('主持人视图');
+const activeRole = ref('host');
 </script>
 <template>
   <main class="shell">
     <h1>TTSync</h1>
     <nav role="tablist">
-      <button v-for="view in views" :key="view" role="tab" type="button" :aria-selected="activeView === view" @click="activeView = view">{{ view }}</button>
+      <button role="tab" type="button" @click="activeRole = 'host'">主持人视图</button>
+      <button role="tab" type="button" @click="activeRole = 'participant'">参与者视图</button>
+      <button role="tab" type="button" @click="activeRole = 'spectator'">观众视图</button>
     </nav>
-    <p>{{ activeView }}</p>
+    <p>{{ activeRole }}</p>
   </main>
 </template>`,
     'main.ts': `import { createApp } from 'vue';
@@ -1082,13 +1108,48 @@ createApp(App).mount('#app');`,
   };
   assert.doesNotThrow(() => assertClientAllowedSurface(validSources));
   for (const [name, sources] of [
-    ['sendBeacon', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nnavigator.sendBeacon('/audit');") }],
-    ['任意网络 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nfetch('/api/team');") }],
-    ['持久化 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeView = ref('主持人视图');", "const activeView = ref('主持人视图');\nlocalStorage.setItem('role', 'host');") }],
+    ['sendBeacon', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeRole = ref('host');", "const activeRole = ref('host');\nnavigator.sendBeacon('/audit');") }],
+    ['任意网络 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeRole = ref('host');", "const activeRole = ref('host');\nfetch('/api/team');") }],
+    ['持久化 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeRole = ref('host');", "const activeRole = ref('host');\nlocalStorage.setItem('role', 'host');") }],
     ['模板外链资源', { ...validSources, 'App.vue': validSources['App.vue'].replace('<h1>TTSync</h1>', '<h1>TTSync</h1><img src="https://example.invalid/a.png">') }],
     ['额外源文件', { ...validSources, 'api.ts': 'export {};' }],
   ]) {
     assert.throws(() => assertClientAllowedSurface(sources), assert.AssertionError, `客户端 validator 必须拒绝 ${name}`);
+  }
+});
+
+test('客户端模板表达式 validator 仅允许三角色本地切换', () => {
+  const validSources = {
+    'App.vue': `<script setup lang="ts">
+import { ref } from 'vue';
+const activeRole = ref('host');
+</script>
+<template>
+  <main class="shell">
+    <nav role="tablist">
+      <button role="tab" type="button" @click="activeRole = 'host'">主持人视图</button>
+      <button role="tab" type="button" @click="activeRole = 'participant'">参与者视图</button>
+      <button role="tab" type="button" @click="activeRole = 'spectator'">观众视图</button>
+    </nav>
+    <p>{{ activeRole }}</p>
+  </main>
+</template>`,
+    'main.ts': `import { createApp } from 'vue';
+import App from './App.vue';
+import './style.css';
+createApp(App).mount('#app');`,
+    'style.css': '.shell { color: #172033; }',
+  };
+  assert.doesNotThrow(() => assertClientAllowedSurface(validSources));
+  for (const [name, source] of [
+    ['@click sendBeacon', validSources['App.vue'].replace("activeRole = 'host'", "navigator.sendBeacon('/audit')")],
+    ['@click location.assign', validSources['App.vue'].replace("activeRole = 'participant'", "location.assign('https://example.test')")],
+  ]) {
+    assert.throws(
+      () => assertClientAllowedSurface({ ...validSources, 'App.vue': source }),
+      assert.AssertionError,
+      `客户端模板表达式 validator 必须拒绝 ${name}`,
+    );
   }
 });
 
