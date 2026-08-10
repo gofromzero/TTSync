@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gofromzero/ttsync/internal/platform/postgres/sqlc"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,5 +26,15 @@ func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func Health(pool *pgxpool.Pool) func(context.Context) error {
-	return pool.Ping
+	queries := sqlc.New(pool)
+	return func(ctx context.Context) error {
+		ready, err := queries.Health(ctx)
+		if err != nil {
+			return fmt.Errorf("query PostgreSQL readiness: %w", err)
+		}
+		if ready != 1 {
+			return fmt.Errorf("query PostgreSQL readiness: unexpected value %d", ready)
+		}
+		return nil
+	}
 }
