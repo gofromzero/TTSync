@@ -420,10 +420,13 @@ function assertClientAllowedSurface(sources) {
   for (const match of templateMatch[1].matchAll(/<\s*(\/)?([A-Za-z][\w-]*)([^>]*)>/g)) {
     if (match[1]) continue;
     assert.ok(allowedElements.has(match[2]), `App.vue template 元素不在允许面：${match[2]}`);
-    const clickMatch = match[3].match(/@click\s*=\s*(?:"([^"]*)"|'([^']*)')/);
-    if (clickMatch) {
-      assert.ok(match[2] === 'button' && /\brole\s*=\s*(?:"tab"|'tab')/.test(match[3]), 'App.vue @click 只允许三角色 tab');
-      tabClickExpressions.push(clickMatch[1] ?? clickMatch[2]);
+    const clickMatches = [...match[3].matchAll(/@click\s*=\s*(?:"([^"]*)"|'([^']*)')/g)];
+    const isRoleTabButton = match[2] === 'button' && /\brole\s*=\s*(?:"tab"|'tab')/.test(match[3]);
+    if (isRoleTabButton) {
+      assert.equal(clickMatches.length, 1, 'App.vue 每个三角色 tab 必须恰好一个 @click');
+      tabClickExpressions.push(clickMatches[0][1] ?? clickMatches[0][2]);
+    } else {
+      assert.equal(clickMatches.length, 0, 'App.vue @click 只允许三角色 tab');
     }
     const remainder = match[3].replace(/([:@]?[A-Za-z_][\w:.-]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'))?/g, (attribute, name) => {
       assert.ok(!urlAttributes.has(name), `App.vue template 不允许任何 URL scheme：${name}`);
@@ -1144,6 +1147,8 @@ createApp(App).mount('#app');`,
   for (const [name, source] of [
     ['@click sendBeacon', validSources['App.vue'].replace("activeRole = 'host'", "navigator.sendBeacon('/audit')")],
     ['@click location.assign', validSources['App.vue'].replace("activeRole = 'participant'", "location.assign('https://example.test')")],
+    ['重复 @click sendBeacon', validSources['App.vue'].replace("@click=\"activeRole = 'host'\"", "@click=\"activeRole = 'host'\" @click=\"navigator.sendBeacon('/audit')\"")],
+    ['重复 @click location.assign', validSources['App.vue'].replace("@click=\"activeRole = 'participant'\"", "@click=\"activeRole = 'participant'\" @click=\"location.assign('https://example.test')\"")],
   ]) {
     assert.throws(
       () => assertClientAllowedSurface({ ...validSources, 'App.vue': source }),
