@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -95,24 +97,80 @@ func TestWebServesIndex(t *testing.T) {
 }
 
 func TestWebKeepsUnknownAPIRoutesAsJSONNotFound(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/api/missing", nil)
-	response := httptest.NewRecorder()
 	web := fstest.MapFS{
 		"index.html": &fstest.MapFile{Data: []byte("<!doctype html><title>TTSync</title>")},
 	}
-
-	New(Config{
+	handler := New(Config{
 		Ready: func(context.Context) error { return nil },
 		Web:   web,
-	}).ServeHTTP(response, request)
+	})
 
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "canonical API path", path: "/api/missing"},
+		{name: "repeated leading slash", path: "//api/missing"},
+		{name: "parent segment", path: "/../api/missing"},
 	}
-	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
-		t.Fatalf("Content-Type = %q, want application/json", contentType)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.URL.Path = test.path
+			request.RequestURI = test.path
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+			}
+			if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
+				t.Fatalf("Content-Type = %q, want application/json", contentType)
+			}
+			if body := response.Body.String(); body != "{\"error\":\"not_found\"}\n" {
+				t.Fatalf("body = %q, want JSON not-found response", body)
+			}
+		})
 	}
-	if body := response.Body.String(); body != "{\"error\":\"not_found\"}\n" {
-		t.Fatalf("body = %q, want JSON not-found response", body)
+}
+
+func TestWebRejectsDirectoriesAndMissingAssets(t *testing.T) {
+	web := fstest.MapFS{
+		"index.html":         &fstest.MapFile{Data: []byte("<!doctype html><title>TTSync</title>")},
+		"assets":             &fstest.MapFile{Mode: fs.ModeDir},
+		"assets/existing.js": &fstest.MapFile{Data: []byte("console.log('TTSync')")},
+	}
+	handler := New(Config{
+		Ready: func(context.Context) error { return nil },
+		Web:   web,
+	})
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "embedded directory", path: "/assets"},
+		{name: "embedded directory with slash", path: "/assets/"},
+		{name: "missing bundled asset", path: "/assets/missing.js"},
+		{name: "missing root asset", path: "/favicon.ico"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+			}
+			if body := response.Body.String(); body == "<!doctype html><title>TTSync</title>" {
+				t.Fatal("asset miss returned SPA index")
+			}
+			if body := response.Body.String(); strings.Contains(body, "existing.js") {
+				t.Fatalf("directory response leaked asset listing: %q", body)
+			}
+		})
 	}
 }

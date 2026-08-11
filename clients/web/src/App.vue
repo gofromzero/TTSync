@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-const activeRole = ref('host');
+const activeRole = ref<'host' | 'participant' | 'spectator'>('host');
 </script>
 <template>
   <main class="shell">

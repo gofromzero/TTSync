@@ -32,14 +32,26 @@ func New(config Config) http.Handler {
 		_ = json.NewEncoder(writer).Encode(map[string]string{"status": status})
 	})
 	router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
-		if strings.HasPrefix(request.URL.Path, "/api/") {
+		normalizedPath := path.Clean("/" + request.URL.Path)
+		if strings.HasPrefix(normalizedPath, "/api/") {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(writer).Encode(map[string]string{"error": "not_found"})
 			return
 		}
-		filePath := strings.TrimPrefix(path.Clean(request.URL.Path), "/")
-		if _, err := fs.Stat(config.Web, filePath); err != nil {
+		filePath := strings.TrimPrefix(normalizedPath, "/")
+		info, err := fs.Stat(config.Web, filePath)
+		if err == nil && info.Mode().IsRegular() {
+			request = request.Clone(request.Context())
+			request.URL.Path = normalizedPath
+			http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
+			return
+		}
+		if err == nil || strings.HasPrefix(normalizedPath, "/assets/") || path.Ext(normalizedPath) != "" {
+			http.NotFound(writer, request)
+			return
+		}
+		if _, err := fs.Stat(config.Web, "index.html"); err == nil {
 			request = request.Clone(request.Context())
 			request.URL.Path = "/"
 		}
