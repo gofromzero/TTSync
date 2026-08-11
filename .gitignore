@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!deployments/.env.example
 
 # Editors and operating systems
 .idea/
