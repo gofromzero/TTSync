@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
       POSTGRES_DB: ttsync
       POSTGRES_USER: ttsync
@@ -31,7 +31,7 @@ services:
       retries: 30
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     depends_on:
       app:
         condition: service_healthy
@@ -42,7 +42,7 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "https://localhost/health/live"]
       interval: 2s
       timeout: 3s
       retries: 30

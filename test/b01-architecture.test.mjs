@@ -731,6 +731,20 @@ function assertBrowserSmokeAllowedSurface(source) {
   const sourceFile = ts.createSourceFile(virtualPath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   assert.deepEqual(sourceFile.parseDiagnostics ?? [], [], '浏览器 smoke 必须是有效 JavaScript 语法');
 
+  let runtimeProgram = sourceFile;
+  const registeredTest = sourceFile.statements.find((statement) => ts.isExpressionStatement(statement)
+    && ts.isCallExpression(statement.expression)
+    && ts.isIdentifier(statement.expression.expression)
+    && statement.expression.expression.text === 'test');
+  if (registeredTest) {
+    const callback = registeredTest.expression.arguments[2];
+    assert.ok(callback && ts.isArrowFunction(callback) && callback.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) && ts.isBlock(callback.body), '浏览器 smoke test 必须使用 async callback');
+    const tryIndex = callback.body.statements.findIndex(ts.isTryStatement);
+    assert.ok(tryIndex >= 0, '浏览器 smoke 必须用 try/finally 包裹 browser 运行面');
+    const tryStatement = callback.body.statements[tryIndex];
+    runtimeProgram = { statements: [...callback.body.statements.slice(0, tryIndex), ...tryStatement.tryBlock.statements] };
+  }
+
   let chromiumName;
   let assertName;
   for (const statement of sourceFile.statements) {
@@ -748,9 +762,9 @@ function assertBrowserSmokeAllowedSurface(source) {
   assert.ok(chromiumName, '浏览器 smoke 必须从 playwright 导入 chromium');
   assert.ok(assertName, '浏览器 smoke 必须导入 node:assert/strict');
 
-  const bindings = variableBindings(sourceFile);
+  const bindings = variableBindings(runtimeProgram);
   const bindingPositions = new Map();
-  sourceFile.statements.forEach((statement, index) => {
+  runtimeProgram.statements.forEach((statement, index) => {
     if (!ts.isVariableStatement(statement)) {
       return;
     }
@@ -779,13 +793,13 @@ function assertBrowserSmokeAllowedSurface(source) {
   assert.ok(pageBinding, '浏览器 smoke 必须从 context.newPage 创建 page');
   const [pageName] = pageBinding;
 
-  const callRecords = topLevelCallRecords(sourceFile);
+  const callRecords = topLevelCallRecords(runtimeProgram);
   const calls = callRecords.map(({ call }) => call);
   const callPosition = (target) => callRecords.find(({ call }) => call === target)?.index;
   const gotoCalls = nodesUnder(sourceFile).filter((node) => ts.isCallExpression(node) && propertyCall(node, pageName, 'goto'));
   assert.equal(gotoCalls.length, 1, '浏览器 smoke 全文件只能调用一次 page.goto');
   const [gotoCall] = gotoCalls;
-  const gotoStatements = sourceFile.statements.filter((statement) => ts.isExpressionStatement(statement)
+  const gotoStatements = runtimeProgram.statements.filter((statement) => ts.isExpressionStatement(statement)
     && ts.isAwaitExpression(statement.expression)
     && propertyCall(statement.expression, pageName, 'goto'));
   assert.equal(gotoStatements.length, 1, 'page.goto 必须是顶层 awaited expression');
@@ -1165,6 +1179,64 @@ test('B-01 Compose 与 Caddy 只暴露三容器 HTTPS 运行面', () => {
   const caddySource = readFileSync(requireFile('deployments/Caddyfile'), 'utf8');
   assert.match(caddySource, /tls\s+internal/, 'Caddy 必须是唯一的本地 HTTPS 入口');
   assert.match(caddySource, /reverse_proxy\s+app:8080/, 'Caddy 只能反向代理应用服务');
+});
+
+test('Task 5 镜像、浏览器与 Caddy 验收可重现且封闭绕过面', () => {
+  const dockerfile = readFileSync(requireFile('deployments/Dockerfile'), 'utf8');
+  const fromLines = dockerfile.match(/^FROM\s+.+$/gm) ?? [];
+  assert.equal(fromLines.length, 3, 'Dockerfile 必须保持三阶段构建');
+  for (const fromLine of fromLines) {
+    assert.match(fromLine, /^FROM\s+\S+@sha256:[a-f0-9]{64}(?:\s+AS\s+\S+)?$/, `Dockerfile 基础镜像必须固定 multiarch digest：${fromLine}`);
+  }
+  assert.doesNotMatch(dockerfile, /\bapk\s+add\b/, 'runtime 不得在构建时下载漂移包');
+
+  const compose = parse(readFileSync(requireFile('deployments/compose.yaml'), 'utf8'));
+  for (const serviceName of ['postgres', 'caddy']) {
+    assert.match(compose.services?.[serviceName]?.image ?? '', /^[^@\s]+@sha256:[a-f0-9]{64}$/, `${serviceName} 镜像必须固定 multiarch digest`);
+  }
+  const caddyHealth = JSON.stringify(compose.services?.caddy?.healthcheck?.test ?? []);
+  assert.match(caddyHealth, /https:\/\/localhost\/health\/live/, 'Caddy healthcheck 必须经真实 HTTPS reverse_proxy 探测 liveness');
+  assert.doesNotMatch(caddyHealth, /:2019/, 'Caddy healthcheck 不得仅探测 admin 端点');
+
+  const readme = readFileSync(requireFile('README.md'), 'utf8');
+  const npmCiPosition = readme.indexOf('npm ci');
+  const playwrightInstallPosition = readme.indexOf('npx --no-install playwright install chromium');
+  assert.ok(npmCiPosition >= 0 && playwrightInstallPosition > npmCiPosition, 'README 必须先 npm ci，再以 --no-install 安装 Chromium');
+
+  const browserSmoke = readFileSync(requireFile('test/b01-browser-smoke.mjs'), 'utf8');
+  assert.match(browserSmoke, /from 'node:test'/, 'browser smoke 必须使用 node:test 显式 skip');
+  assert.match(browserSmoke, /skip:\s*process\.env\.B01_RUN_BROWSER_SMOKE\s*!==\s*'1'/, 'browser smoke 必须由 node:test skip option 表达未启用');
+  assert.doesNotMatch(browserSmoke, /process\.exit\s*\(/, 'browser smoke 不得中途 process.exit');
+  assert.match(browserSmoke, /const baseOrigin = new URL\(baseUrl\)\.origin;/, 'browser smoke 必须导出基准 origin');
+  const assertStrictBrowserOrigin = (source) => {
+    assert.match(source, /new URL\(request\.url\(\)\)\.origin !== baseOrigin/, 'browser smoke 必须严格比较 URL origin');
+    assert.doesNotMatch(source, /request\.url\(\)\.startsWith/, 'browser smoke 不得以共享前缀判断同源');
+  };
+  assertStrictBrowserOrigin(browserSmoke);
+  assert.match(browserSmoke, /try\s*\{[\s\S]*\}\s*finally\s*\{\s*await browser\.close\(\);\s*\}/, 'browser launch 后必须由 finally 关闭');
+
+  const baseOrigin = new URL('https://localhost:8443').origin;
+  assert.notEqual(new URL('https://localhost.evil.test/path').origin, new URL('https://localhost').origin, '共享前缀恶意主机必须被判为外联');
+  assert.notEqual(new URL('https://localhost:8443@evil.test/path').origin, baseOrigin, 'userinfo 恶意 URL 必须被判为外联');
+  for (const [name, source] of [
+    ['共享前缀 startsWith', browserSmoke.replace('new URL(request.url()).origin !== baseOrigin', 'request.url().startsWith(baseUrl)')],
+    ['userinfo startsWith', browserSmoke.replace('new URL(request.url()).origin !== baseOrigin', "request.url().startsWith('https://localhost:8443@evil.test')")],
+  ]) {
+    assert.throws(() => assertStrictBrowserOrigin(source), assert.AssertionError, `严格 origin validator 必须拒绝 ${name}`);
+  }
+});
+
+test('browser smoke 未启用时由 node:test 显式报告 skipped', () => {
+  const environment = { ...process.env };
+  delete environment.B01_RUN_BROWSER_SMOKE;
+  delete environment.NODE_TEST_CONTEXT;
+  const result = execFileSync(process.execPath, ['--test', 'test/b01-browser-smoke.mjs'], {
+    cwd: repositoryRoot,
+    env: environment,
+    encoding: 'utf8',
+  });
+  assert.match(result, /# skipped 1\b/, 'browser smoke 必须显式计入 skipped');
+  assert.doesNotMatch(result, /# pass 1\b/, 'browser smoke 未启用时不得伪报普通 PASS');
 });
 
 test('B-01 提供 Go、sqlc、四领域与前端的最小工件', () => {

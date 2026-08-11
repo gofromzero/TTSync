@@ -1,4 +1,4 @@
 localhost:443 {
-	tls internal
-	reverse_proxy app:8080
+  tls internal
+  reverse_proxy app:8080
 }

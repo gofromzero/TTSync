@@ -6,7 +6,12 @@
 
 ## 个人测试部署
 
-此组合环境只面向 1–20 人的个人休闲测试，不是生产容量、可用性、备份或恢复承诺。需要 Docker Desktop、Node.js 20+ 和 PowerShell；首次真实浏览器验收前运行 `npx playwright install chromium`。
+此组合环境只面向 1–20 人的个人休闲测试，不是生产容量、可用性、备份或恢复承诺。需要 Docker Desktop、Node.js 20+ 和 PowerShell。首次真实浏览器验收前，先按锁文件安装依赖，再仅使用已安装的 Playwright 下载 Chromium：
+
+```powershell
+npm ci
+npx --no-install playwright install chromium
+```
 
 ```powershell
 Copy-Item deployments/.env.example .env

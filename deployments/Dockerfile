@@ -1,11 +1,11 @@
-FROM node:22-alpine AS web-build
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS web-build
 WORKDIR /src
 COPY clients/web/package.json clients/web/package-lock.json ./clients/web/
 RUN npm ci --prefix clients/web
 COPY clients/web ./clients/web
 RUN npm run --prefix clients/web build
 
-FROM golang:1.24-alpine AS go-build
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS go-build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -17,8 +17,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ttsync ./cmd/ttsyn
     && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate \
     && CGO_ENABLED=0 go test -c -tags=integration -o /out/postgres-integration.test ./internal/platform/postgres
 
-FROM alpine:3.22 AS runtime
-RUN apk add --no-cache ca-certificates
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS runtime
 WORKDIR /app
 COPY --from=go-build /out/ttsync /out/migrate /out/postgres-integration.test /app/
 EXPOSE 8080
