@@ -14,7 +14,7 @@ $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $tempDirectory = [IO.Path]::GetFullPath((Join-Path $tempRoot "ttsync-sqlc-$runId"))
 $archivePath = Join-Path $tempDirectory $assetName
 $extractPath = Join-Path $tempDirectory 'extracted'
-$locationPushed = $false
+$workspacePath = Join-Path $tempDirectory 'workspace'
 
 try {
     New-Item -ItemType Directory -Path $tempDirectory | Out-Null
@@ -54,22 +54,25 @@ try {
         throw 'verified sqlc v1.31.1 archive does not contain sqlc.exe'
     }
 
-    Push-Location $repositoryRoot
-    $locationPushed = $true
-    & $sqlcExecutable generate -f db/sqlc.yaml
+    $temporaryDb = Join-Path $workspacePath 'db'
+    New-Item -ItemType Directory -Path $temporaryDb -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'db/sqlc.yaml') -Destination (Join-Path $temporaryDb 'sqlc.yaml')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'db/queries') -Destination (Join-Path $temporaryDb 'queries') -Recurse
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'db/migrations') -Destination (Join-Path $temporaryDb 'migrations') -Recurse
+
+    & $sqlcExecutable generate -f (Join-Path $temporaryDb 'sqlc.yaml')
     if ($LASTEXITCODE -ne 0) {
         throw "sqlc v1.31.1 generation failed with exit code $LASTEXITCODE"
     }
 
-    & git diff --exit-code -- internal/platform/postgres/sqlc
+    & (Join-Path $PSScriptRoot 'assert-generated-tree.ps1') `
+        -ExpectedDirectory (Join-Path $repositoryRoot 'internal/platform/postgres/sqlc') `
+        -ActualDirectory (Join-Path $workspacePath 'internal/platform/postgres/sqlc')
     if ($LASTEXITCODE -ne 0) {
         throw 'sqlc generated output drifted; run npm run db:generate and commit the result'
     }
 }
 finally {
-    if ($locationPushed) {
-        Pop-Location
-    }
     if (Test-Path -LiteralPath $tempDirectory) {
         $expectedLeaf = "ttsync-sqlc-$runId"
         $rootPrefix = $tempRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar

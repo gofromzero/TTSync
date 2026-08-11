@@ -36,7 +36,7 @@ try {
             --health-interval 1s `
             --health-timeout 3s `
             --health-retries 30 `
-            postgres:17-alpine).Trim()
+            postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193).Trim()
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdContainerId)) {
             throw 'failed to start disposable PostgreSQL container'
         }

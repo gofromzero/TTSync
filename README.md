@@ -6,7 +6,7 @@
 
 ## 个人测试部署
 
-此组合环境只面向 1–20 人的个人休闲测试，不是生产容量、可用性、备份或恢复承诺。需要 Docker Desktop、Node.js 20+ 和 PowerShell。首次真实浏览器验收前，先按锁文件安装依赖，再仅使用已安装的 Playwright 下载 Chromium：
+此组合环境只面向 1–20 人的个人休闲测试，不是生产容量、可用性、备份或恢复承诺。需要 Docker Desktop、Node.js `^20.19.0 || >=22.12.0` 和 PowerShell；该范围与 `clients/web/package.json` 的 `engines.node` 一致。首次真实浏览器验收前，先按锁文件安装依赖，再仅使用已安装的 Playwright 下载 Chromium：
 
 ```powershell
 npm ci
@@ -24,4 +24,4 @@ docker compose --env-file .env -f deployments/compose.yaml up --build --wait
 docker compose --env-file .env -f deployments/compose.yaml down -v --remove-orphans
 ```
 
-可独立重复的验证入口：`npm run test:contracts`、`npm run test:mvp-acceptance`、`npm run test:b01:structure`、`npm run db:generate`、`npm run web:typecheck`、`npm run web:build`、`npm run test:go`、`npm run smoke:b01`。
+可独立重复的验证入口：`npm run test:contracts`、`npm run contracts:check`、`npm run test:mvp-acceptance`、`npm run test:b01:structure`、`npm run db:generate`、`npm run db:migrate:test`、`npm run web:typecheck`、`npm run web:build`、`npm run test:go`、`npm run smoke:b01`。其中 `npm run test:go` 组合执行 sqlc 漂移检查、Go 单元测试与真实 PostgreSQL integration test；`npm run smoke:b01` 组合执行三容器构建启动、迁移、真实数据库停启 readiness、HTTPS 与 Playwright 浏览器验收并清理测试资源。

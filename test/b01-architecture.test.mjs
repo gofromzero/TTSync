@@ -1189,16 +1189,32 @@ test('Task 5 镜像、浏览器与 Caddy 验收可重现且封闭绕过面', () 
     assert.match(fromLine, /^FROM\s+\S+@sha256:[a-f0-9]{64}(?:\s+AS\s+\S+)?$/, `Dockerfile 基础镜像必须固定 multiarch digest：${fromLine}`);
   }
   assert.doesNotMatch(dockerfile, /\bapk\s+add\b/, 'runtime 不得在构建时下载漂移包');
+  assert.match(
+    dockerfile,
+    /^FROM\s+golang:1\.25-alpine@sha256:56961d79ea8129efddcc0b8643fd8a5416b4e6228cfd477e3fd61deb2672c587\s+AS\s+go-build$/m,
+    'Go builder 必须与计划一致并固定官方 Go 1.25 multiarch index digest',
+  );
+  assert.match(dockerfile, /^RUN\s+addgroup\s+-S\s+ttsync\s+&&\s+adduser\s+-S\s+-D\s+-H\s+-s\s+\/sbin\/nologin\s+-G\s+ttsync\s+ttsync$/m, 'runtime 必须创建专用无登录用户');
+  assert.match(dockerfile, /^USER\s+ttsync:ttsync$/m, 'runtime 必须以专用非 root 用户运行');
 
   const compose = parse(readFileSync(requireFile('deployments/compose.yaml'), 'utf8'));
   for (const serviceName of ['postgres', 'caddy']) {
     assert.match(compose.services?.[serviceName]?.image ?? '', /^[^@\s]+@sha256:[a-f0-9]{64}$/, `${serviceName} 镜像必须固定 multiarch digest`);
   }
+  const testGoSource = readFileSync(requireFile('scripts/test-go.ps1'), 'utf8');
+  const testGoPostgresImages = testGoSource.match(/postgres:17-alpine@sha256:[a-f0-9]{64}/g) ?? [];
+  assert.deepEqual(testGoPostgresImages, [compose.services.postgres.image], 'test:go 必须精确复用 Compose 的完整 PostgreSQL tag 与 digest');
   const caddyHealth = JSON.stringify(compose.services?.caddy?.healthcheck?.test ?? []);
   assert.match(caddyHealth, /https:\/\/localhost\/health\/live/, 'Caddy healthcheck 必须经真实 HTTPS reverse_proxy 探测 liveness');
   assert.doesNotMatch(caddyHealth, /:2019/, 'Caddy healthcheck 不得仅探测 admin 端点');
 
   const readme = readFileSync(requireFile('README.md'), 'utf8');
+  const clientPackage = JSON.parse(readFileSync(requireFile('clients/web/package.json'), 'utf8'));
+  assert.match(readme, /Node\.js `\^20\.19\.0 \|\| >=22\.12\.0`/, 'README Node 前置必须精确匹配客户端 engines');
+  assert.equal(clientPackage.engines?.node, '^20.19.0 || >=22.12.0', '客户端 Node engines 必须保持锁定');
+  for (const command of ['npm run contracts:check', 'npm run db:migrate:test', 'npm run test:go', 'npm run smoke:b01']) {
+    assert.match(readme, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `README 必须说明 ${command}`);
+  }
   const npmCiPosition = readme.indexOf('npm ci');
   const playwrightInstallPosition = readme.indexOf('npx --no-install playwright install chromium');
   assert.ok(npmCiPosition >= 0 && playwrightInstallPosition > npmCiPosition, 'README 必须先 npm ci，再以 --no-install 安装 Chromium');
@@ -1224,6 +1240,19 @@ test('Task 5 镜像、浏览器与 Caddy 验收可重现且封闭绕过面', () 
   ]) {
     assert.throws(() => assertStrictBrowserOrigin(source), assert.AssertionError, `严格 origin validator 必须拒绝 ${name}`);
   }
+});
+
+test('Go 模块版本与 B-01 计划一致', () => {
+  assert.match(readFileSync(requireFile('go.mod'), 'utf8'), /^go 1\.25(?:\.0)?$/m, 'go.mod 必须声明 Go 1.25');
+});
+
+test('sqlc generation 在隔离目录生成并比较完整文件树', () => {
+  const source = readFileSync(requireFile('scripts/generate-sqlc.ps1'), 'utf8');
+  assert.doesNotMatch(source, /git\s+diff/, 'sqlc drift 不得依赖忽略 untracked 文件的 git diff');
+  assert.match(source, /Copy-Item[\s\S]+db[\\/]sqlc\.yaml/, 'sqlc 必须复制最小配置到隔离目录');
+  assert.match(source, /Copy-Item[\s\S]+db[\\/]queries/, 'sqlc 必须复制查询输入到隔离目录');
+  assert.match(source, /Copy-Item[\s\S]+db[\\/]migrations/, 'sqlc 必须复制 schema 输入到隔离目录');
+  assert.match(source, /assert-generated-tree\.ps1/, 'sqlc 必须比较隔离生成树与已提交生成树');
 });
 
 test('browser smoke 未启用时由 node:test 显式报告 skipped', () => {
