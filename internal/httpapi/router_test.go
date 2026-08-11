@@ -75,7 +75,12 @@ func TestWebServesIndex(t *testing.T) {
 		Web:   web,
 	})
 
-	for _, route := range []string{"/", "/rooms/example"} {
+	for _, route := range []string{
+		"/",
+		"/rooms/example",
+		"/rooms/table.v2",
+		"/games/campaign.2026/session",
+	} {
 		t.Run(route, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, route, nil)
 			response := httptest.NewRecorder()
@@ -153,7 +158,6 @@ func TestWebRejectsDirectoriesAndMissingAssets(t *testing.T) {
 		{name: "embedded directory", path: "/assets"},
 		{name: "embedded directory with slash", path: "/assets/"},
 		{name: "missing bundled asset", path: "/assets/missing.js"},
-		{name: "missing root asset", path: "/favicon.ico"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

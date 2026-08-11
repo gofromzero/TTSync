@@ -47,7 +47,7 @@ func New(config Config) http.Handler {
 			http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
 			return
 		}
-		if err == nil || strings.HasPrefix(normalizedPath, "/assets/") || path.Ext(normalizedPath) != "" {
+		if err == nil || normalizedPath == "/assets" || strings.HasPrefix(normalizedPath, "/assets/") {
 			http.NotFound(writer, request)
 			return
 		}
