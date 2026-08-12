@@ -30,6 +30,13 @@ FROM verification_tokens
 WHERE token_digest = $1
 FOR UPDATE;
 
+-- name: LockVerificationAccountByDigest :one
+SELECT accounts.account_id
+FROM accounts
+JOIN verification_tokens USING (account_id)
+WHERE verification_tokens.token_digest = $1
+FOR UPDATE OF accounts;
+
 -- name: CurrentVerificationGeneration :one
 SELECT COALESCE(MAX(generation), 0)::bigint
 FROM verification_tokens

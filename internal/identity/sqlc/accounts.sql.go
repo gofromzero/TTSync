@@ -193,6 +193,21 @@ func (q *Queries) InsertVerificationToken(ctx context.Context, arg InsertVerific
 	return err
 }
 
+const lockVerificationAccountByDigest = `-- name: LockVerificationAccountByDigest :one
+SELECT accounts.account_id
+FROM accounts
+JOIN verification_tokens USING (account_id)
+WHERE verification_tokens.token_digest = $1
+FOR UPDATE OF accounts
+`
+
+func (q *Queries) LockVerificationAccountByDigest(ctx context.Context, tokenDigest []byte) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockVerificationAccountByDigest, tokenDigest)
+	var account_id pgtype.UUID
+	err := row.Scan(&account_id)
+	return account_id, err
+}
+
 const nextVerificationGeneration = `-- name: NextVerificationGeneration :one
 SELECT COALESCE(MAX(generation), 0)::bigint + 1
 FROM verification_tokens

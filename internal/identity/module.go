@@ -67,7 +67,9 @@ func (m *Module) Register(ctx context.Context, command RegisterCommand) (Accepte
 	}
 	now := m.requestTime(command.RequestTime)
 	if m.identityRateLimited(key, command.IP, now) {
-		m.refusalEvent(ctx, "registration_refused", now, command.RequestID, command.IP, "rate_limited")
+		if err := m.refusalEvent(ctx, "registration_refused", now, command.RequestID, command.IP, "rate_limited"); err != nil {
+			return AcceptedResult{}, err
+		}
 		return AcceptedResult{}, ErrRateLimited
 	}
 	passwordHash, err := m.hash(command.Password)
@@ -89,7 +91,14 @@ func (m *Module) Register(ctx context.Context, command RegisterCommand) (Accepte
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
-		m.refusalEvent(ctx, "registration_refused", now, command.RequestID, command.IP, "duplicate")
+		if err := m.refusalEvent(ctx, "registration_refused", now, command.RequestID, command.IP, "duplicate"); err != nil {
+			return AcceptedResult{}, err
+		}
+		if m.deliver != nil {
+			if err := m.deliver(ctx, display, ""); err != nil {
+				return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
+			}
+		}
 		return AcceptedResult{Accepted: true}, nil
 	}
 	if err != nil {
@@ -113,13 +122,15 @@ func (m *Module) Register(ctx context.Context, command RegisterCommand) (Accepte
 }
 
 func (m *Module) ResendVerification(ctx context.Context, command ResendVerificationCommand) (AcceptedResult, error) {
-	_, key, err := normalizeEmail(command.Email)
+	display, key, err := normalizeEmail(command.Email)
 	if err != nil {
 		return AcceptedResult{}, err
 	}
 	now := m.requestTime(command.RequestTime)
 	if m.identityRateLimited(key, command.IP, now) {
-		m.refusalEvent(ctx, "resend_refused", now, command.RequestID, command.IP, "rate_limited")
+		if err := m.refusalEvent(ctx, "resend_refused", now, command.RequestID, command.IP, "rate_limited"); err != nil {
+			return AcceptedResult{}, err
+		}
 		return AcceptedResult{}, ErrRateLimited
 	}
 	tx, err := m.pool.Begin(ctx)
@@ -131,7 +142,14 @@ func (m *Module) ResendVerification(ctx context.Context, command ResendVerificat
 	account, err := queries.FindAccountByEmailForUpdate(ctx, key)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && account.Status != "pending_verification" {
 		_ = tx.Rollback(ctx)
-		m.refusalEvent(ctx, "resend_refused", now, command.RequestID, command.IP, "not_pending")
+		if err := m.refusalEvent(ctx, "resend_refused", now, command.RequestID, command.IP, "not_pending"); err != nil {
+			return AcceptedResult{}, err
+		}
+		if m.deliver != nil {
+			if err := m.deliver(ctx, display, ""); err != nil {
+				return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
+			}
+		}
 		return AcceptedResult{Accepted: true}, nil
 	}
 	if err != nil {
@@ -168,12 +186,16 @@ func (m *Module) ResendVerification(ctx context.Context, command ResendVerificat
 func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (VerifiedResult, error) {
 	now := m.requestTime(command.RequestTime)
 	if m.verificationRateLimited(command.Token, command.IP, now) {
-		m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "rate_limited")
+		if err := m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "rate_limited"); err != nil {
+			return VerifiedResult{}, err
+		}
 		return VerifiedResult{}, ErrRateLimited
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(command.Token)
 	if err != nil || len(raw) < 16 {
-		m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid")
+		if err := m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid"); err != nil {
+			return VerifiedResult{}, err
+		}
 		return VerifiedResult{}, ErrInvalidToken
 	}
 	digest := sha256.Sum256(raw)
@@ -183,13 +205,18 @@ func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (V
 	}
 	defer tx.Rollback(ctx)
 	queries := identitysqlc.New(tx)
-	token, err := queries.FindVerificationTokenForUpdate(ctx, digest[:])
-	if err != nil {
+	if _, err := queries.LockVerificationAccountByDigest(ctx, digest[:]); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			_ = tx.Rollback(ctx)
-			m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid")
+			if err := m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid"); err != nil {
+				return VerifiedResult{}, err
+			}
 			return VerifiedResult{}, ErrInvalidToken
 		}
+		return VerifiedResult{}, fmt.Errorf("lock verification account: %w", err)
+	}
+	token, err := queries.FindVerificationTokenForUpdate(ctx, digest[:])
+	if err != nil {
 		return VerifiedResult{}, fmt.Errorf("find verification token: %w", err)
 	}
 	current, err := queries.CurrentVerificationGeneration(ctx, identitysqlc.CurrentVerificationGenerationParams{AccountID: token.AccountID, Purpose: verificationPurpose})
@@ -198,7 +225,9 @@ func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (V
 	}
 	if token.Purpose != verificationPurpose || token.Generation != current || !token.ExpiresAt.Valid || !token.ExpiresAt.Time.After(now) || token.ConsumedAt.Valid || token.RevokedAt.Valid {
 		_ = tx.Rollback(ctx)
-		m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid")
+		if err := m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "invalid"); err != nil {
+			return VerifiedResult{}, err
+		}
 		return VerifiedResult{}, ErrInvalidToken
 	}
 	changed, err := queries.ConsumeVerificationToken(ctx, identitysqlc.ConsumeVerificationTokenParams{TokenID: token.TokenID, ConsumedAt: dbTime(now)})
@@ -244,8 +273,8 @@ func (m *Module) requestTime(commandTime time.Time) time.Time {
 	return m.now()
 }
 
-func (m *Module) refusalEvent(ctx context.Context, eventType string, at time.Time, requestID, ip, reason string) {
-	_ = insertEvent(ctx, identitysqlc.New(m.pool), pgtype.UUID{}, eventType, at, requestID, ip, reason)
+func (m *Module) refusalEvent(ctx context.Context, eventType string, at time.Time, requestID, ip, reason string) error {
+	return insertEvent(ctx, identitysqlc.New(m.pool), pgtype.UUID{}, eventType, at, requestID, ip, reason)
 }
 
 func insertToken(ctx context.Context, queries *identitysqlc.Queries, accountID pgtype.UUID, generation int64, token verificationToken, now time.Time) error {
