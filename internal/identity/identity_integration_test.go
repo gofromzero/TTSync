@@ -157,7 +157,6 @@ func TestResendAndVerificationTokenStates(t *testing.T) {
 		if err != nil || !result.Verified {
 			t.Fatalf("verify = %+v, %v", result, err)
 		}
-		now = now.Add(time.Minute)
 		if _, err := module.VerifyEmail(ctx, VerifyEmailCommand{Token: raw, RequestTime: now, IP: "198.51.100.5", RequestID: "verify-replay"}); !errors.Is(err, ErrInvalidToken) {
 			t.Fatalf("replay error = %v", err)
 		}
@@ -286,7 +285,7 @@ func TestRegistrationAndResendRateLimitReturnSameErrorWithoutStateChange(t *test
 }
 
 func TestDeliveryFailureDoesNotRevealRegistrationOrResendState(t *testing.T) {
-	deliveryErr := errors.New("verification delivery unavailable")
+	deliveryErr := errors.New("smtp password=do-not-leak token=do-not-leak")
 
 	t.Run("new and duplicate registration", func(t *testing.T) {
 		ctx := context.Background()
@@ -300,7 +299,7 @@ func TestDeliveryFailureDoesNotRevealRegistrationOrResendState(t *testing.T) {
 		_, newErr := module.Register(ctx, RegisterCommand{Email: "delivery@example.com", Password: integrationPassword, IP: "192.0.2.10", RequestTime: now, RequestID: "delivery-new"})
 		now = now.Add(time.Minute)
 		_, duplicateErr := module.Register(ctx, RegisterCommand{Email: "delivery@example.com", Password: integrationPassword, IP: "192.0.2.11", RequestTime: now, RequestID: "delivery-duplicate"})
-		if !errors.Is(newErr, deliveryErr) || !errors.Is(duplicateErr, deliveryErr) {
+		if !errors.Is(newErr, ErrDeliveryUnavailable) || !errors.Is(duplicateErr, ErrDeliveryUnavailable) || errors.Is(newErr, deliveryErr) || errors.Is(duplicateErr, deliveryErr) || newErr.Error() != duplicateErr.Error() {
 			t.Fatalf("new/duplicate delivery errors = %v/%v", newErr, duplicateErr)
 		}
 		if len(raws) != 2 || raws[0] == "" || raws[1] != "" {
@@ -313,6 +312,14 @@ func TestDeliveryFailureDoesNotRevealRegistrationOrResendState(t *testing.T) {
 		if accounts != 1 || tokens != 1 {
 			t.Fatalf("new/duplicate accounts/tokens = %d/%d", accounts, tokens)
 		}
+		var failures, attributed int
+		if err := pool.QueryRow(ctx, `SELECT count(*), count(account_id) FROM identity_security_events WHERE event_type='verification_delivery_failed'`).Scan(&failures, &attributed); err != nil {
+			t.Fatal(err)
+		}
+		if failures != 2 || attributed != 1 {
+			t.Fatalf("delivery failure events/attributed = %d/%d", failures, attributed)
+		}
+		assertEventPayloadsExclude(t, ctx, pool, deliveryErr.Error(), raws[0])
 	})
 
 	t.Run("pending nonexistent and active resend", func(t *testing.T) {
@@ -341,7 +348,7 @@ func TestDeliveryFailureDoesNotRevealRegistrationOrResendState(t *testing.T) {
 		_, pendingErr := module.ResendVerification(ctx, ResendVerificationCommand{Email: "pending-delivery@example.com", RequestTime: now, IP: "192.0.2.21", RequestID: "resend-pending"})
 		_, missingErr := module.ResendVerification(ctx, ResendVerificationCommand{Email: "missing-delivery@example.com", RequestTime: now, IP: "192.0.2.22", RequestID: "resend-missing"})
 		_, activeErr := module.ResendVerification(ctx, ResendVerificationCommand{Email: "active-delivery@example.com", RequestTime: now, IP: "192.0.2.23", RequestID: "resend-active"})
-		if !errors.Is(pendingErr, deliveryErr) || !errors.Is(missingErr, deliveryErr) || !errors.Is(activeErr, deliveryErr) {
+		if !errors.Is(pendingErr, ErrDeliveryUnavailable) || !errors.Is(missingErr, ErrDeliveryUnavailable) || !errors.Is(activeErr, ErrDeliveryUnavailable) || errors.Is(pendingErr, deliveryErr) || errors.Is(missingErr, deliveryErr) || errors.Is(activeErr, deliveryErr) || pendingErr.Error() != missingErr.Error() || pendingErr.Error() != activeErr.Error() {
 			t.Fatalf("pending/missing/active delivery errors = %v/%v/%v", pendingErr, missingErr, activeErr)
 		}
 		if len(raws) != 3 || raws[0] == "" || raws[1] != "" || raws[2] != "" {
@@ -363,6 +370,33 @@ func TestDeliveryFailureDoesNotRevealRegistrationOrResendState(t *testing.T) {
 		}
 		if pendingStatus != "pending_verification" || activeStatus != "active" || pendingTokens != 2 || missingAccounts != 0 || activeTokens != 1 {
 			t.Fatalf("states pending/active/pendingTokens/missing/activeTokens = %s/%s/%d/%d/%d", pendingStatus, activeStatus, pendingTokens, missingAccounts, activeTokens)
+		}
+		var failures, attributed int
+		if err := pool.QueryRow(ctx, `SELECT count(*), count(account_id) FROM identity_security_events WHERE event_type='verification_delivery_failed'`).Scan(&failures, &attributed); err != nil {
+			t.Fatal(err)
+		}
+		if failures != 3 || attributed != 1 {
+			t.Fatalf("delivery failure events/attributed = %d/%d", failures, attributed)
+		}
+		assertEventPayloadsExclude(t, ctx, pool, deliveryErr.Error(), raws[0])
+	})
+
+	t.Run("failure audit write still returns delivery sentinel", func(t *testing.T) {
+		ctx := context.Background()
+		pool := newIdentityTestPool(t, ctx)
+		now := time.Date(2026, 8, 12, 16, 30, 0, 0, time.UTC)
+		module := testModule(pool, &now, func(context.Context, string, string) error { return deliveryErr })
+		installFailingDeliveryEventTrigger(t, ctx, pool)
+		_, err := module.Register(ctx, RegisterCommand{Email: "event-failure@example.com", Password: integrationPassword, IP: "192.0.2.24", RequestTime: now, RequestID: "delivery-event-failure"})
+		if !errors.Is(err, ErrDeliveryUnavailable) || errors.Is(err, deliveryErr) || strings.Contains(err.Error(), deliveryErr.Error()) {
+			t.Fatalf("delivery event persistence error = %v", err)
+		}
+		var accounts, tokens int
+		if err := pool.QueryRow(ctx, `SELECT count(*), (SELECT count(*) FROM verification_tokens) FROM accounts`).Scan(&accounts, &tokens); err != nil {
+			t.Fatal(err)
+		}
+		if accounts != 1 || tokens != 1 {
+			t.Fatalf("committed account/token = %d/%d", accounts, tokens)
 		}
 	})
 }
@@ -394,7 +428,10 @@ func TestRefusalEventPersistenceErrorsArePropagated(t *testing.T) {
 			return err
 		}},
 		{"verification rate limit", func(t *testing.T, ctx context.Context, _ *pgxpool.Pool, module *Module, now *time.Time) error {
-			module.verificationRateLimited("event-rate-token", "192.0.2.44", *now)
+			for i := 0; i < 30; i++ {
+				module.verificationRateLimited("192.0.2.44", now.Add(time.Duration(i)*time.Minute))
+			}
+			*now = now.Add(30 * time.Minute)
 			_, err := module.VerifyEmail(ctx, VerifyEmailCommand{Token: "event-rate-token", IP: "192.0.2.44", RequestTime: *now})
 			return err
 		}},
@@ -541,6 +578,24 @@ func installFailingEventTrigger(t *testing.T, ctx context.Context, pool *pgxpool
 		$$;
 		CREATE TRIGGER reject_identity_event BEFORE INSERT ON identity_security_events
 		FOR EACH ROW EXECUTE FUNCTION reject_identity_event();
+	`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func installFailingDeliveryEventTrigger(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(ctx, `
+		CREATE FUNCTION reject_delivery_failure_event() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.event_type = 'verification_delivery_failed' THEN
+				RAISE EXCEPTION 'forced delivery event failure';
+			END IF;
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER reject_delivery_failure_event BEFORE INSERT ON identity_security_events
+		FOR EACH ROW EXECUTE FUNCTION reject_delivery_failure_event();
 	`); err != nil {
 		t.Fatal(err)
 	}

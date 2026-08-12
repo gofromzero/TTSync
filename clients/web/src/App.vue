@@ -82,7 +82,7 @@ onMounted(async () => {
     </section>
     <section class="account-card" aria-label="账号注册与邮箱验证">
       <h2>创建账号</h2>
-      <form class="account-form" @submit.prevent="register">
+      <form class="account-form" aria-label="创建账号" @submit.prevent="register">
         <label for="register-email">注册邮箱</label>
         <input id="register-email" name="email" v-model="email" type="email" autocomplete="email">
         <label for="register-password">注册密码</label>
@@ -91,7 +91,7 @@ onMounted(async () => {
         <p role="status" aria-live="polite">{{ registerMessage }}</p>
       </form>
       <h2>重发验证邮件</h2>
-      <form class="account-form" @submit.prevent="resend">
+      <form class="account-form" aria-label="重发验证邮件" @submit.prevent="resend">
         <label for="resend-email">邮箱</label>
         <input id="resend-email" name="email" v-model="resendEmail" type="email" autocomplete="email">
         <button type="submit" :disabled="resending">重发验证邮件</button>

@@ -19,9 +19,10 @@ import (
 const verificationPurpose = "email_verification"
 
 var (
-	ErrInvalidToken = errors.New("invalid verification token")
-	ErrRateLimited  = errors.New("rate limited")
-	packageLimiter  limiter
+	ErrInvalidToken        = errors.New("invalid verification token")
+	ErrRateLimited         = errors.New("rate limited")
+	ErrDeliveryUnavailable = errors.New("verification delivery unavailable")
+	packageLimiter         limiter
 )
 
 type RegisterCommand struct {
@@ -94,10 +95,8 @@ func (m *Module) Register(ctx context.Context, command RegisterCommand) (Accepte
 		if err := m.refusalEvent(ctx, "registration_refused", now, command.RequestID, command.IP, "duplicate"); err != nil {
 			return AcceptedResult{}, err
 		}
-		if m.deliver != nil {
-			if err := m.deliver(ctx, display, ""); err != nil {
-				return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
-			}
+		if err := m.deliverVerification(ctx, display, "", pgtype.UUID{}, now, command.RequestID, command.IP); err != nil {
+			return AcceptedResult{}, err
 		}
 		return AcceptedResult{Accepted: true}, nil
 	}
@@ -113,10 +112,8 @@ func (m *Module) Register(ctx context.Context, command RegisterCommand) (Accepte
 	if err := tx.Commit(ctx); err != nil {
 		return AcceptedResult{}, fmt.Errorf("commit registration: %w", err)
 	}
-	if m.deliver != nil {
-		if err := m.deliver(ctx, display, token.raw); err != nil {
-			return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
-		}
+	if err := m.deliverVerification(ctx, display, token.raw, accountID, now, command.RequestID, command.IP); err != nil {
+		return AcceptedResult{}, err
 	}
 	return AcceptedResult{Accepted: true}, nil
 }
@@ -145,10 +142,8 @@ func (m *Module) ResendVerification(ctx context.Context, command ResendVerificat
 		if err := m.refusalEvent(ctx, "resend_refused", now, command.RequestID, command.IP, "not_pending"); err != nil {
 			return AcceptedResult{}, err
 		}
-		if m.deliver != nil {
-			if err := m.deliver(ctx, display, ""); err != nil {
-				return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
-			}
+		if err := m.deliverVerification(ctx, display, "", pgtype.UUID{}, now, command.RequestID, command.IP); err != nil {
+			return AcceptedResult{}, err
 		}
 		return AcceptedResult{Accepted: true}, nil
 	}
@@ -175,17 +170,15 @@ func (m *Module) ResendVerification(ctx context.Context, command ResendVerificat
 	if err := tx.Commit(ctx); err != nil {
 		return AcceptedResult{}, fmt.Errorf("commit resend: %w", err)
 	}
-	if m.deliver != nil {
-		if err := m.deliver(ctx, account.EmailDisplay, token.raw); err != nil {
-			return AcceptedResult{}, fmt.Errorf("deliver verification: %w", err)
-		}
+	if err := m.deliverVerification(ctx, account.EmailDisplay, token.raw, account.AccountID, now, command.RequestID, command.IP); err != nil {
+		return AcceptedResult{}, err
 	}
 	return AcceptedResult{Accepted: true}, nil
 }
 
 func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (VerifiedResult, error) {
 	now := m.requestTime(command.RequestTime)
-	if m.verificationRateLimited(command.Token, command.IP, now) {
+	if m.verificationRateLimited(command.IP, now) {
 		if err := m.refusalEvent(ctx, "verification_refused", now, command.RequestID, command.IP, "rate_limited"); err != nil {
 			return VerifiedResult{}, err
 		}
@@ -247,16 +240,14 @@ func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (V
 }
 
 func (m *Module) identityRateLimited(target, ip string, now time.Time) bool {
-	targetAllowed := m.limits.allow("identity:target:"+target, now, 1, 5)
-	ipAllowed := m.limits.allow("identity:ip:"+ip, now, 20, 20)
-	return !targetAllowed || !ipAllowed
+	if !m.limits.allow("identity:ip:"+ip, now, 20, 20) {
+		return true
+	}
+	return !m.limits.allow("identity:target:"+target, now, 1, 5)
 }
 
-func (m *Module) verificationRateLimited(rawToken, ip string, now time.Time) bool {
-	target := sha256.Sum256([]byte(rawToken))
-	targetAllowed := m.limits.allow("verification:target:"+string(target[:]), now, 1, 5)
-	ipAllowed := m.limits.allow("verification:ip:"+ip, now, 30, 30)
-	return !targetAllowed || !ipAllowed
+func (m *Module) verificationRateLimited(ip string, now time.Time) bool {
+	return !m.limits.allow("verification:ip:"+ip, now, 30, 30)
 }
 
 func (m *Module) requestTime(commandTime time.Time) time.Time {
@@ -268,6 +259,19 @@ func (m *Module) requestTime(commandTime time.Time) time.Time {
 
 func (m *Module) refusalEvent(ctx context.Context, eventType string, at time.Time, requestID, ip, reason string) error {
 	return insertEvent(ctx, identitysqlc.New(m.pool), pgtype.UUID{}, eventType, at, requestID, ip, reason)
+}
+
+func (m *Module) deliverVerification(ctx context.Context, email, rawToken string, accountID pgtype.UUID, at time.Time, requestID, ip string) error {
+	if m.deliver == nil {
+		return nil
+	}
+	if err := m.deliver(ctx, email, rawToken); err == nil {
+		return nil
+	}
+	if err := insertEvent(ctx, identitysqlc.New(m.pool), accountID, "verification_delivery_failed", at, requestID, ip, "delivery_unavailable"); err != nil {
+		return errors.Join(ErrDeliveryUnavailable, err)
+	}
+	return ErrDeliveryUnavailable
 }
 
 func insertToken(ctx context.Context, queries *identitysqlc.Queries, accountID pgtype.UUID, generation int64, token verificationToken, now time.Time) error {

@@ -21,6 +21,11 @@ services:
       DATABASE_URL: postgres://ttsync:${TTSYNC_POSTGRES_PASSWORD:?set TTSYNC_POSTGRES_PASSWORD}@postgres:5432/ttsync?sslmode=disable
       HTTP_ADDR: :8080
       PUBLIC_ORIGIN: ${TTSYNC_PUBLIC_ORIGIN:-https://localhost:8443}
+      MAIL_OUTBOX_DIR: ${TTSYNC_MAIL_OUTBOX_DIR:-}
+      SMTP_ADDR: ${TTSYNC_SMTP_ADDR:-}
+      SMTP_FROM: ${TTSYNC_SMTP_FROM:-}
+      SMTP_USERNAME: ${TTSYNC_SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${TTSYNC_SMTP_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

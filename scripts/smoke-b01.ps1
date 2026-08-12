@@ -89,6 +89,11 @@ $previousRunBrowserSmoke = $env:B01_RUN_BROWSER_SMOKE
 $previousPublicOrigin = $env:TTSYNC_PUBLIC_ORIGIN
 $previousId01ComposeProject = $env:ID01_COMPOSE_PROJECT
 $previousId01ComposeFile = $env:ID01_COMPOSE_FILE
+$previousMailOutboxDir = $env:TTSYNC_MAIL_OUTBOX_DIR
+$previousSmtpAddr = $env:TTSYNC_SMTP_ADDR
+$previousSmtpFrom = $env:TTSYNC_SMTP_FROM
+$previousSmtpUsername = $env:TTSYNC_SMTP_USERNAME
+$previousSmtpPassword = $env:TTSYNC_SMTP_PASSWORD
 $env:TTSYNC_POSTGRES_PASSWORD = "TEST_ONLY_$runId"
 $env:TTSYNC_HTTPS_PORT = $baseUri.Port.ToString()
 $env:B01_BASE_URL = $BaseUrl.TrimEnd('/')
@@ -96,6 +101,11 @@ $env:B01_RUN_BROWSER_SMOKE = '1'
 $env:TTSYNC_PUBLIC_ORIGIN = $env:B01_BASE_URL
 $env:ID01_COMPOSE_PROJECT = $script:projectName
 $env:ID01_COMPOSE_FILE = $script:composeFile
+$env:TTSYNC_MAIL_OUTBOX_DIR = '/tmp/ttsync-outbox'
+$env:TTSYNC_SMTP_ADDR = ''
+$env:TTSYNC_SMTP_FROM = ''
+$env:TTSYNC_SMTP_USERNAME = ''
+$env:TTSYNC_SMTP_PASSWORD = ''
 $databaseUrl = "postgres://ttsync:$($env:TTSYNC_POSTGRES_PASSWORD)@postgres:5432/ttsync?sslmode=disable"
 
 Push-Location $repositoryRoot
@@ -197,6 +207,11 @@ finally {
     $env:TTSYNC_PUBLIC_ORIGIN = $previousPublicOrigin
     $env:ID01_COMPOSE_PROJECT = $previousId01ComposeProject
     $env:ID01_COMPOSE_FILE = $previousId01ComposeFile
+    $env:TTSYNC_MAIL_OUTBOX_DIR = $previousMailOutboxDir
+    $env:TTSYNC_SMTP_ADDR = $previousSmtpAddr
+    $env:TTSYNC_SMTP_FROM = $previousSmtpFrom
+    $env:TTSYNC_SMTP_USERNAME = $previousSmtpUsername
+    $env:TTSYNC_SMTP_PASSWORD = $previousSmtpPassword
     Pop-Location
   }
 }

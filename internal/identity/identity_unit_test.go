@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -81,6 +82,26 @@ func TestLimiterEnforcesMinuteAndHourBoundaries(t *testing.T) {
 	}
 }
 
+func TestLimiterReclaimsExpiredKeysAndFailsClosedAtCapacity(t *testing.T) {
+	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	entries := make(map[string][]time.Time, 4097)
+	for i := 0; i < 4096; i++ {
+		entries[fmt.Sprintf("expired-%d", i)] = []time.Time{now.Add(-time.Hour)}
+	}
+	limited := limiter{entries: entries}
+	if !limited.allow("fresh", now, 1, 5) || len(limited.entries) != 1 {
+		t.Fatalf("expired entries were not reclaimed: len=%d", len(limited.entries))
+	}
+
+	full := limiter{entries: make(map[string][]time.Time, 4096)}
+	for i := 0; i < 4096; i++ {
+		full.entries[fmt.Sprintf("live-%d", i)] = []time.Time{now}
+	}
+	if full.allow("overflow", now, 1, 5) || len(full.entries) != 4096 {
+		t.Fatalf("capacity did not fail closed: allowed=%v len=%d", full.entries["overflow"] != nil, len(full.entries))
+	}
+}
+
 func TestModuleLimitersShareIdentityIPBucketAndDoNotKeepRawTokens(t *testing.T) {
 	now := time.Date(2026, 8, 12, 11, 0, 0, 0, time.UTC)
 	module := &Module{limits: &limiter{}}
@@ -94,11 +115,36 @@ func TestModuleLimitersShareIdentityIPBucketAndDoNotKeepRawTokens(t *testing.T) 
 		t.Fatal("21st combined registration/resend IP request was allowed")
 	}
 	raw := "secret-verification-token"
-	module.verificationRateLimited(raw, "192.0.2.2", now)
+	module.verificationRateLimited("192.0.2.2", now)
 	for key := range module.limits.entries {
 		if strings.Contains(key, raw) {
 			t.Fatalf("limiter key kept raw token: %q", key)
 		}
+	}
+}
+
+func TestModuleLimitersRejectIPBeforeAllocatingTargetAndVerifyByIPOnly(t *testing.T) {
+	now := time.Date(2026, 8, 12, 11, 30, 0, 0, time.UTC)
+	module := &Module{limits: &limiter{}}
+	for i := 0; i < 20; i++ {
+		if module.identityRateLimited(fmt.Sprintf("target-%d", i), "192.0.2.10", now.Add(time.Duration(i)*time.Minute)) {
+			t.Fatalf("identity request %d was limited", i+1)
+		}
+	}
+	before := len(module.limits.entries)
+	if !module.identityRateLimited("must-not-be-allocated", "192.0.2.10", now.Add(20*time.Minute)) {
+		t.Fatal("21st identity IP request was allowed")
+	}
+	if len(module.limits.entries) != before {
+		t.Fatalf("IP refusal allocated target: before=%d after=%d", before, len(module.limits.entries))
+	}
+	for i := 0; i < 30; i++ {
+		if module.verificationRateLimited("192.0.2.11", now.Add(time.Duration(i)*time.Minute)) {
+			t.Fatalf("verification IP request %d was limited", i+1)
+		}
+	}
+	if !module.verificationRateLimited("192.0.2.11", now.Add(30*time.Minute)) {
+		t.Fatal("31st verification IP request was allowed")
 	}
 }
 

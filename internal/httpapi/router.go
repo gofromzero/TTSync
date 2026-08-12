@@ -78,6 +78,9 @@ func New(config Config) http.Handler {
 		case errors.Is(err, identity.ErrRateLimited):
 			writer.Header().Set("Retry-After", "60")
 			writeProblem(writer, request, requestID, http.StatusTooManyRequests, "RATE_LIMITED", "请求过于频繁", "请在 Retry-After 指定时间后重试。")
+		case errors.Is(err, identity.ErrDeliveryUnavailable):
+			writer.Header().Set("Retry-After", "60")
+			writeProblem(writer, request, requestID, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "服务暂时不可用", "邮件服务暂时不可用，请稍后重试。")
 		default:
 			writeProblem(writer, request, requestID, http.StatusInternalServerError, "INTERNAL_ERROR", "服务暂时失败", "请求未能完成，请使用 requestId 联系维护者。")
 		}
@@ -90,8 +93,8 @@ func New(config Config) http.Handler {
 		}
 		request.Body = http.MaxBytesReader(writer, request.Body, 64<<10)
 		decoder := json.NewDecoder(request.Body)
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(destination); err != nil {
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
 			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
 			return false
 		}
@@ -100,11 +103,15 @@ func New(config Config) http.Handler {
 			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
 			return false
 		}
+		if err := json.Unmarshal(raw, destination); err != nil {
+			writeValidation(writer, request, requestID, "")
+			return false
+		}
 		return true
 	}
 	exactKeys := func(writer http.ResponseWriter, request *http.Request, requestID string, body map[string]json.RawMessage, allowed ...string) bool {
 		if body == nil {
-			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
+			writeValidation(writer, request, requestID, "")
 			return false
 		}
 		for key := range body {
@@ -113,7 +120,7 @@ func New(config Config) http.Handler {
 				found = found || key == candidate
 			}
 			if !found {
-				writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段名称无效。")
+				writeValidation(writer, request, requestID, key)
 				return false
 			}
 		}
@@ -192,8 +199,16 @@ func New(config Config) http.Handler {
 		}
 		invitationRaw, hasInvitation := body["invitationToken"]
 		var email, password, invitationToken string
-		if len(emailRaw) == 0 || len(passwordRaw) == 0 || emailRaw[0] != '"' || passwordRaw[0] != '"' || hasInvitation && (len(invitationRaw) == 0 || invitationRaw[0] != '"') || json.Unmarshal(emailRaw, &email) != nil || json.Unmarshal(passwordRaw, &password) != nil || hasInvitation && json.Unmarshal(invitationRaw, &invitationToken) != nil {
-			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
+		if len(emailRaw) == 0 || emailRaw[0] != '"' || json.Unmarshal(emailRaw, &email) != nil {
+			writeValidation(writer, request, requestID, "email")
+			return
+		}
+		if len(passwordRaw) == 0 || passwordRaw[0] != '"' || json.Unmarshal(passwordRaw, &password) != nil {
+			writeValidation(writer, request, requestID, "password")
+			return
+		}
+		if hasInvitation && (len(invitationRaw) == 0 || invitationRaw[0] != '"' || json.Unmarshal(invitationRaw, &invitationToken) != nil) {
+			writeValidation(writer, request, requestID, "invitationToken")
 			return
 		}
 		if hasInvitation && (len(invitationToken) < 32 || len(invitationToken) > 512) {
@@ -225,7 +240,7 @@ func New(config Config) http.Handler {
 		}
 		var email string
 		if len(emailRaw) == 0 || emailRaw[0] != '"' || json.Unmarshal(emailRaw, &email) != nil {
-			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
+			writeValidation(writer, request, requestID, "email")
 			return
 		}
 		ip := requestIP(request)
@@ -253,7 +268,7 @@ func New(config Config) http.Handler {
 		}
 		var token string
 		if len(tokenRaw) == 0 || tokenRaw[0] != '"' || json.Unmarshal(tokenRaw, &token) != nil {
-			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
+			writeValidation(writer, request, requestID, "token")
 			return
 		}
 		if len(token) < 32 || len(token) > 512 {

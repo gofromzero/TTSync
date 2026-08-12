@@ -9,10 +9,10 @@
 ## 最小设计
 
 - `identity.Module` 是具体类型，不增加单实现 Go interface、repository 或通用 UoW。
-- Module 直接使用 `pgxpool`；事务、唯一性、令牌和审计规则留在 Module 内。
+- Module 直接使用 `pgxpool`；单一所有者命令自行开启并完成事务，唯一性、令牌和审计规则留在 Module 内；HTTP 与 app 组装层不持有业务事务。
 - 标准库负责邮箱 trim/lower、Unicode 可打印检查、CSPRNG、SHA-256、SMTP 和测试 outbox；密码哈希复用已安装的 `x/crypto/argon2`。
-- 邮件以一个函数参数作为内部 seam：生产用 SMTP，测试用写入容器临时目录的 outbox；不增加服务或公开 outbox endpoint。对照 #19，投递可用时正常业务分支均受理；每个未限速的 Register/Resend 路径都调用同一邮件 seam，新建/待验证使用真实令牌，无令牌分支使用通用无链接回执；SMTP 失败统一为可重试依赖错误，绝不验证账号。
-- 单机限速用进程内 mutex + map；`# ponytail:` 注明多实例时再换共享存储。
+- 邮件以一个函数参数作为内部 seam：生产用强制验证证书的 STARTTLS（TLS 1.2+），开发/烟测显式使用容器 outbox；不增加服务或公开 outbox endpoint。Register/Resend 投递失败在已提交状态上追加安全事件，并只返回统一可重试依赖错误。
+- 单机限速用进程内 mutex + 有界 map；注册/重发先检查 IP 再分配目标桶，验证提交只按 IP 30/hour；`# ponytail:` 注明多实例时再换共享存储。
 - Vue 继续使用现有 `App.vue`，不增加路由、状态库或表单依赖。
 
 ## 固定规则
@@ -43,16 +43,17 @@
 
 **修改：** `internal/httpapi/`、`internal/app/`、`cmd/ttsync/`；只在需要时新增 `internal/platform/mail/`。
 
-- [ ] RED：三个冻结 endpoint 的严格 JSON、CSRF、通用响应、统一 Problem Details、限速及日志秘密缺失。
-- [ ] RED：SMTP 失败后账号仍 pending 且 resend 可恢复；测试 outbox 文件权限为 0600。
-- [ ] GREEN：Chi 只解析/映射；app 组装具体 Module；SMTP/outbox 都通过同一个发送函数调用。
-- [ ] 验证：HTTP/app 定向测试、Go 全包；中文提交。
+- [x] RED：三个冻结 endpoint 的严格 JSON、CSRF、通用响应、统一 Problem Details、限速及日志秘密缺失。
+- [x] RED：SMTP 失败后账号仍 pending 且 resend 可恢复；测试 outbox 文件权限为 0600。
+- [x] GREEN：Chi 只解析/映射；app 组装具体 Module；SMTP/outbox 都通过同一个发送函数调用。
+- [x] 验证：HTTP/app 定向测试、Go 全包；中文提交。
 
 ## Slice 4 — Vue + 真实浏览器
 
 **修改：** 现有 Vue 三文件、一个 `test/id01-browser-smoke.mjs`，以及现有 Compose smoke 的最小复用点。
 
-- [ ] RED：真实浏览器注册 → 从容器测试 outbox 读取链接 → 验证；重复注册反馈相同；令牌重放失败。
-- [ ] GREEN：在 `App.vue` 加原生表单；测试模式只通过 `docker compose exec` 读取 outbox，不公开 HTTP endpoint；仍恰好三个容器。
-- [ ] 验证：contracts/MVP/structure/sqlc/web/Go/vet、真实 PostgreSQL、Caddy/Chromium、秘密扫描、资源零残留。
-- [ ] Standards 与 Spec 并行复核；修完全部 finding 后中文提交、推送分支并关闭 #31。
+- [x] RED：真实浏览器注册 → 从容器测试 outbox 读取链接 → 验证；重复注册反馈相同；令牌重放失败。
+- [x] GREEN：在 `App.vue` 加原生表单；测试模式只通过 `docker compose exec` 读取 outbox，不公开 HTTP endpoint；仍恰好三个容器。
+- [x] 验证：contracts/MVP/structure/sqlc/web/Go/vet、真实 PostgreSQL、Caddy/Chromium、秘密扫描、资源零残留。
+- [x] Standards 与 Spec 最终复核；修完全部 finding 后中文提交。
+- [ ] 推送分支并关闭 #31。

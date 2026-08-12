@@ -1075,6 +1075,20 @@ export interface components {
             /** @constant */
             code: "INTERNAL_ERROR";
         };
+        ServiceUnavailableProblem: {
+            /** Format: uri-reference */
+            type: string;
+            title: string;
+            detail: string;
+            /** Format: uri-reference */
+            instance: string;
+            /** Format: uuid */
+            requestId: string;
+            /** @constant */
+            status: 503;
+            /** @constant */
+            code: "SERVICE_UNAVAILABLE";
+        };
         RateLimitedProblem: {
             /** Format: uri-reference */
             type: string;
@@ -1801,6 +1815,25 @@ export interface components {
                 "application/problem+json": components["schemas"]["InternalErrorProblem"];
             };
         };
+        /** @description 邮件等必需依赖暂时不可用（503）；调用者可稍后重试 */
+        ServiceUnavailable: {
+            headers: {
+                "Retry-After": string;
+                [name: string]: unknown;
+            };
+            content: {
+                /** @example {
+                 *       "type": "https://ttsync.example/problems/service-unavailable",
+                 *       "title": "服务暂时不可用",
+                 *       "status": 503,
+                 *       "detail": "邮件服务暂时不可用，请稍后重试。",
+                 *       "instance": "/problems/req-503",
+                 *       "code": "SERVICE_UNAVAILABLE",
+                 *       "requestId": "018f5f89-d59a-7e09-97c2-ca37b778be7e"
+                 *     } */
+                "application/problem+json": components["schemas"]["ServiceUnavailableProblem"];
+            };
+        };
     };
     parameters: {
         RequestId: string;
@@ -1850,6 +1883,7 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     resendVerification: {
@@ -1882,6 +1916,7 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     verifyEmail: {
@@ -1914,6 +1949,7 @@ export interface operations {
             422: components["responses"]["UnprocessableEntity"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getSession: {

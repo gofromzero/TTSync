@@ -89,6 +89,7 @@ const identityStub = "package identity\n" +
   "var ErrInvalidPassword = errors.New(\"invalid password\")\n" +
   "var ErrInvalidToken = errors.New(\"invalid token\")\n" +
   "var ErrRateLimited = errors.New(\"rate limited\")\n" +
+  "var ErrDeliveryUnavailable = errors.New(\"delivery unavailable\")\n" +
   "type RegisterCommand struct { Email, Password, IP, RequestID string; RequestTime time.Time }\n" +
   "type ResendVerificationCommand struct { Email, IP, RequestID string; RequestTime time.Time }\n" +
   "type VerifyEmailCommand struct { Token, IP, RequestID string; RequestTime time.Time }\n" +
@@ -385,7 +386,7 @@ function repositoryFilesUnder(relativeDirectory = '.', ignoredDirectoryNames = n
   return files;
 }
 
-function assertClientAllowedSurface(sources) {
+function assertClientAllowedSurface(sources, { requireId01 = false } = {}) {
   assert.deepEqual(Object.keys(sources).sort(), ['App.vue', 'main.ts', 'style.css'], 'B-01 客户端源文件必须精确为 App.vue、main.ts、style.css');
 
   const mainFile = ts.createSourceFile('main.ts', sources['main.ts'], ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -424,6 +425,7 @@ function assertClientAllowedSurface(sources) {
     'App.vue 只允许 ref，或 ID-01 所需的 onMounted + ref',
   );
   const id01Client = vueImports.includes('onMounted');
+  if (requireId01) assert.ok(id01Client, '真实客户端必须保留 ID-01 注册、重发与验证能力');
 
   const allowedInitializer = (node) => {
     const value = unwrappedExpression(node);
@@ -561,6 +563,7 @@ function assertClientAllowedSurface(sources) {
   const urlAttributes = new Set(['href', 'src', 'srcset', 'action', 'formaction', 'poster', 'xlink:href']);
   const tabClickExpressions = [];
   const submitExpressions = [];
+  const formLabels = [];
   for (const match of templateMatch[1].matchAll(/<\s*(\/)?([A-Za-z][\w-]*)([^>]*)>/g)) {
     if (match[1]) continue;
     assert.ok(allowedElements.has(match[2]), `App.vue template 元素不在允许面：${match[2]}`);
@@ -576,6 +579,7 @@ function assertClientAllowedSurface(sources) {
     if (match[2] === 'form') {
       assert.equal(submitMatches.length, 1, 'ID-01 每个 form 必须恰好一个原生 submit handler');
       submitExpressions.push(submitMatches[0][1] ?? submitMatches[0][2]);
+      formLabels.push(match[3].match(/\baria-label\s*=\s*(?:"([^"]*)"|'([^']*)')/)?.slice(1).find(Boolean));
     } else {
       assert.equal(submitMatches.length, 0, '@submit.prevent 只允许用于 form');
     }
@@ -623,6 +627,7 @@ function assertClientAllowedSurface(sources) {
   }
   if (id01Client) {
     assert.deepEqual(submitExpressions.sort(), ['register', 'resend'], 'ID-01 template 只允许注册与重发两个 submit handler');
+    assert.deepEqual(formLabels.sort(), ['创建账号', '重发验证邮件'], 'ID-01 两个 form 必须用精确 aria-label 区分真实浏览器操作');
     assert.match(templateMatch[1], /<label\b[^>]*for=(?:"|')register-email(?:"|')[^>]*>[\s\S]*?<input\b[^>]*id=(?:"|')register-email(?:"|')[^>]*type=(?:"|')email(?:"|')/, '注册邮箱必须有明确 label 与原生 email input');
     assert.match(templateMatch[1], /<label\b[^>]*for=(?:"|')register-password(?:"|')[^>]*>[\s\S]*?<input\b[^>]*id=(?:"|')register-password(?:"|')[^>]*type=(?:"|')password(?:"|')/, '注册密码必须有明确 label 与原生 password input');
     assert.match(templateMatch[1], /role=(?:"|')status(?:"|')[^>]*aria-live=(?:"|')polite(?:"|')/, 'ID-01 状态区域必须是 aria-live status');
@@ -1257,9 +1262,8 @@ function assertId01BrowserSmokeAllowedSurface(source) {
   assert.match(source, /process\.env\.ID01_COMPOSE_FILE/, 'ID-01 browser smoke 必须读取精确 Compose file');
 
   const callRecords = topLevelCallRecords(runtimeProgram);
-  const callPosition = (target) => callRecords.find(({ call }) => call === target)?.index;
   const gotoCalls = callRecords.filter(({ call }) => propertyCall(call, pageName, 'goto'));
-  assert.equal(gotoCalls.length, 4, 'ID-01 browser smoke 必须真实导航首屏、验证、重放和重复注册');
+  assert.equal(gotoCalls.length, 5, 'ID-01 browser smoke 必须真实导航首屏、旧 token、新 token、重放和重复注册');
   assert.ok(gotoCalls.every(({ call }) => call.arguments[0] && (ts.isIdentifier(call.arguments[0]) || ts.isStringLiteralLike(call.arguments[0]))), 'ID-01 browser smoke 导航目标必须来自受控 URL');
   const firstGotoPosition = gotoCalls[0].index;
   const collectorForEvent = (eventName) => {
@@ -1270,7 +1274,9 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     assert.ok(record && record.index < firstGotoPosition, `ID-01 ${eventName} listener 必须早于首次 goto`);
     const listener = record.call.arguments[1];
     assert.ok(listener && (ts.isArrowFunction(listener) || ts.isFunctionExpression(listener)), `ID-01 ${eventName} listener 必须是函数`);
-    const eventNameIdentifier = listener.parameters[0]?.name?.text;
+    assert.equal(listener.parameters.length, 1, `ID-01 ${eventName} listener 必须接收一个标识符参数`);
+    assert.ok(ts.isIdentifier(listener.parameters[0].name), `ID-01 ${eventName} listener 必须接收一个标识符参数`);
+    const eventNameIdentifier = listener.parameters[0].name.text;
     const push = nodesUnder(listener.body).find((node) => ts.isCallExpression(node)
       && ts.isPropertyAccessExpression(node.expression)
       && node.expression.name.text === 'push'
@@ -1352,7 +1358,7 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     ]), '秘密扫描必须读取同一精确 Compose project 的 app 日志');
 
   const waitResponses = nodesUnder(tryStatement.tryBlock).filter((node) => propertyCall(node, pageName, 'waitForResponse'));
-  assert.equal(waitResponses.length, 4, 'ID-01 browser smoke 必须等待两次 register 与两次 verify 真实响应');
+  assert.equal(waitResponses.length, 6, 'ID-01 browser smoke 必须等待 register、resend、旧/新/replay verify 与 duplicate 真实响应');
   const waitedPaths = waitResponses.map((call) => {
     const literals = nodesUnder(call.arguments[0]).filter(ts.isStringLiteralLike).map((node) => node.text);
     return literals.find((value) => value.startsWith('/api/'));
@@ -1362,7 +1368,9 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     '/api/v1/accounts',
     '/api/v1/accounts/verification',
     '/api/v1/accounts/verification',
-  ], 'ID-01 browser smoke 必须等待真实 register/verify/replay/duplicate endpoint');
+    '/api/v1/accounts/verification',
+    '/api/v1/accounts/verification/resend',
+  ], 'ID-01 browser smoke 必须等待真实 register/resend/old/new/replay/duplicate endpoint');
 
   const bindingPosition = (name) => tryStatement.tryBlock.statements.findIndex((statement) => ts.isVariableStatement(statement)
     && statement.declarationList.declarations.some((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name));
@@ -1382,16 +1390,98 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     const position = bindingPosition(bindingName);
     assert.ok(position >= 0 && assertion.position > position, `${label} 必须位于 ${bindingName} 真实动作/响应之后`);
   };
-  const replayStatusAssertion = criticalAssertion('equal', (args) => propertyCall(args[0], 'replay', 'status')
-    && ts.isNumericLiteral(args[1])
-    && args[1].text === '422', '重放 422 断言');
-  afterBinding(replayStatusAssertion, 'replay', '重放 422 断言');
-  const outboxModeAssertion = criticalAssertion('equal', (args) => ts.isPropertyAccessExpression(args[0])
-    && args[0].expression.getText(sourceFile) === 'firstOutbox'
-    && args[0].name.text === 'directoryMode'
-    && ts.isStringLiteralLike(args[1])
-    && args[1].text === '700', 'outbox 700 断言');
-  afterBinding(outboxModeAssertion, 'firstOutbox', 'outbox 700 断言');
+  const responseStatusAssertion = (responseName, status, label) => {
+    const assertion = criticalAssertion('equal', (args) => propertyCall(args[0], responseName, 'status')
+      && ts.isNumericLiteral(args[1])
+      && args[1].text === String(status), label);
+    afterBinding(assertion, responseName, label);
+    return assertion;
+  };
+  const responseEvidence = [
+    ['firstRegister', 200, '首次注册 200 断言'],
+    ['resendResult', 200, '重发 200 断言'],
+    ['oldTokenResult', 422, '旧 token 422 断言'],
+    ['newTokenResult', 200, '新 token 200 断言'],
+    ['replay', 422, '重放 422 断言'],
+    ['duplicateResult', 200, '重复注册 200 断言'],
+  ];
+  const responseAssertions = new Map(responseEvidence.map(([name, status, label]) => [name, responseStatusAssertion(name, status, label)]));
+
+  const stateEvidence = [
+    ['pendingAfterRegister', '1|pending_verification', 'firstRegister'],
+    ['pendingAfterOldToken', '1|pending_verification', 'oldTokenResult'],
+    ['activeAfterNewToken', '1|active', 'newTokenResult'],
+    ['activeAfterReplay', '1|active', 'replay'],
+    ['activeAfterDuplicate', '1|active', 'duplicateResult'],
+  ];
+  for (const [stateName, expected, responseName] of stateEvidence) {
+    const initializer = bindings.get(stateName);
+    assert.ok(initializer && ts.isCallExpression(initializer)
+      && ts.isIdentifier(initializer.expression)
+      && initializer.expression.text === 'accountState'
+      && initializer.arguments[0]?.getText(sourceFile) === 'email', `${stateName} 必须来自真实 accountState(email)`);
+    const stateAssertion = criticalAssertion('equal', (args) => args[0]?.getText(sourceFile) === stateName
+      && ts.isStringLiteralLike(args[1])
+      && args[1].text === expected, `${stateName} DB 状态断言`);
+    afterBinding(stateAssertion, stateName, `${stateName} DB 状态断言`);
+    assert.ok(bindingPosition(stateName) > responseAssertions.get(responseName).position, `${stateName} 必须在 ${responseName} 真实响应后读取`);
+  }
+
+  const outboxEvidence = (outboxName, responseName) => {
+    const initializer = bindings.get(outboxName);
+    assert.ok(initializer && ts.isCallExpression(initializer)
+      && ts.isIdentifier(initializer.expression)
+      && initializer.expression.text === 'readOutbox'
+      && initializer.arguments.length === 0, `${outboxName} 必须直接读取真实 outbox`);
+    const modeAssertion = criticalAssertion('equal', (args) => args[0]?.getText(sourceFile) === `${outboxName}.directoryMode`
+      && ts.isStringLiteralLike(args[1])
+      && args[1].text === '700', `${outboxName} 700 断言`);
+    afterBinding(modeAssertion, outboxName, `${outboxName} 700 断言`);
+    const fileModeAssertion = criticalAssertion('ok', (args) => {
+      const every = unwrappedExpression(args[0]);
+      if (!ts.isCallExpression(every)
+        || !ts.isPropertyAccessExpression(every.expression)
+        || every.expression.expression.getText(sourceFile) !== `${outboxName}.messages`
+        || every.expression.name.text !== 'every') return false;
+      const callback = every.arguments[0];
+      assert.ok(callback && ts.isArrowFunction(callback)
+        && callback.parameters.length === 1
+        && ts.isIdentifier(callback.parameters[0].name), `${outboxName} 文件 mode callback 必须接收一个标识符参数`);
+      const parameter = callback.parameters[0].name.text;
+      return ts.isBinaryExpression(callback.body)
+        && callback.body.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+        && callback.body.left.getText(sourceFile) === `${parameter}.mode`
+        && ts.isStringLiteralLike(callback.body.right)
+        && callback.body.right.text === '600';
+    }, `${outboxName} 文件 600 断言`);
+    afterBinding(fileModeAssertion, outboxName, `${outboxName} 文件 600 断言`);
+    assert.ok(bindingPosition(outboxName) > responseAssertions.get(responseName).position, `${outboxName} 必须在 ${responseName} 真实响应后读取`);
+  };
+  outboxEvidence('firstOutbox', 'firstRegister');
+  outboxEvidence('secondOutbox', 'resendResult');
+  outboxEvidence('finalOutbox', 'duplicateResult');
+  for (const [messagesName, label] of [['linkedMessages', '首次验证邮件数量'], ['resendMessages', '重发验证邮件数量'], ['duplicateMessages', '重复注册通用邮件数量']]) {
+    const countAssertion = criticalAssertion('equal', (args) => args[0]?.getText(sourceFile) === `${messagesName}.length`
+      && ts.isNumericLiteral(args[1])
+      && args[1].text === '1', `${label}断言`);
+    afterBinding(countAssertion, messagesName, `${label}断言`);
+  }
+  const tokenRotationAssertion = criticalAssertion('notEqual', (args) => args[0]?.getText(sourceFile) === 'newToken'
+    && args[1]?.getText(sourceFile) === 'token', '重发 token 换代断言');
+  afterBinding(tokenRotationAssertion, 'newToken', '重发 token 换代断言');
+  afterBinding(tokenRotationAssertion, 'token', '重发 token 换代断言');
+
+  const waits = nodesUnder(tryStatement.tryBlock).filter((node) => ts.isCallExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === 'setTimeout');
+  assert.equal(waits.length, 2, 'ID-01 browser smoke 只允许两次真实 target 一分钟等待');
+  const waitPositions = waits.map((wait) => {
+    assert.ok(ts.isNumericLiteral(wait.arguments[1]) && wait.arguments[1].text === '61000', 'target 限速等待必须超过一分钟');
+    return tryStatement.tryBlock.statements.findIndex((statement) => nodesUnder(statement).includes(wait));
+  });
+  assert.ok(waitPositions[0] > bindingPosition('token') && waitPositions[0] < bindingPosition('resendResponse'), '首次等待必须只位于注册 token 与重发之间');
+  assert.ok(waitPositions[1] > bindingPosition('replay') && waitPositions[1] < bindingPosition('duplicateResponse'), '第二次等待必须只位于即时重放与重复注册之间');
+
   const passwordLogAssertion = criticalAssertion('ok', (args) => ts.isPrefixUnaryExpression(args[0])
     && args[0].operator === ts.SyntaxKind.ExclamationToken
     && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'password', 'app 日志密码断言');
@@ -1400,6 +1490,10 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     && args[0].operator === ts.SyntaxKind.ExclamationToken
     && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'token', 'app 日志 token 断言');
   afterBinding(tokenLogAssertion, 'appLogs', 'app 日志 token 断言');
+  const newTokenLogAssertion = criticalAssertion('ok', (args) => ts.isPrefixUnaryExpression(args[0])
+    && args[0].operator === ts.SyntaxKind.ExclamationToken
+    && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'newToken', 'app 日志重发 token 断言');
+  afterBinding(newTokenLogAssertion, 'appLogs', 'app 日志重发 token 断言');
   const cookiesBinding = bindings.get('cookies');
   assert.ok(propertyCall(cookiesBinding, contextName, 'cookies'), 'ID-01 browser smoke 必须从真实 context 获取 cookies');
   afterBinding(passwordLogAssertion, 'cookies', 'app 日志密码断言');
@@ -1407,10 +1501,10 @@ function assertId01BrowserSmokeAllowedSurface(source) {
   const csrfCookieBinding = bindings.get('csrfCookie');
   const csrfFind = propertyCall(csrfCookieBinding, 'cookies', 'find');
   const csrfFindCallback = csrfFind?.arguments[0];
-  assert.ok(csrfFindCallback
-    && ts.isArrowFunction(csrfFindCallback)
-    && ts.isIdentifier(csrfFindCallback.parameters[0]?.name)
-    && ts.isBinaryExpression(csrfFindCallback.body)
+  assert.ok(csrfFindCallback && ts.isArrowFunction(csrfFindCallback), 'CSRF cookie find 必须使用 arrow callback');
+  assert.ok(csrfFindCallback.parameters.length === 1 && ts.isIdentifier(csrfFindCallback.parameters[0].name), 'CSRF cookie find callback 必须接收一个标识符参数');
+  assert.ok(
+    ts.isBinaryExpression(csrfFindCallback.body)
     && csrfFindCallback.body.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
     && csrfFindCallback.body.left.getText(sourceFile) === `${csrfFindCallback.parameters[0].name.text}.name`
     && ts.isStringLiteralLike(csrfFindCallback.body.right)
@@ -1422,10 +1516,10 @@ function assertId01BrowserSmokeAllowedSurface(source) {
   const cookiesEveryAssertion = (predicate, label) => criticalAssertion('ok', (args) => {
     const every = propertyCall(args[0], 'cookies', 'every');
     const everyCallback = every?.arguments[0];
-    return everyCallback
-      && ts.isArrowFunction(everyCallback)
-      && ts.isIdentifier(everyCallback.parameters[0]?.name)
-      && predicate(everyCallback.body, everyCallback.parameters[0].name.text);
+    if (!everyCallback) return false;
+    assert.ok(ts.isArrowFunction(everyCallback), 'cookie every 必须使用 arrow callback');
+    assert.ok(everyCallback.parameters.length === 1 && ts.isIdentifier(everyCallback.parameters[0].name), 'cookie every callback 必须接收一个标识符参数');
+    return predicate(everyCallback.body, everyCallback.parameters[0].name.text);
   }, label);
   const cookieValuesNonempty = cookiesEveryAssertion((body, cookieName) => ts.isBinaryExpression(body)
     && body.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
@@ -1440,41 +1534,51 @@ function assertId01BrowserSmokeAllowedSurface(source) {
   afterBinding(cookieValuesAbsent, 'appLogs', '全部 cookie 值日志排除断言');
   afterBinding(cookieValuesAbsent, 'cookies', '全部 cookie 值日志排除断言');
 
-  const expectedReplayConsoleError = bindings.get('expectedReplayConsoleError');
-  assert.ok(expectedReplayConsoleError && ts.isObjectLiteralExpression(expectedReplayConsoleError), 'ID-01 browser smoke 必须构造绑定重放响应的精确 console 诊断');
-  const replayConsoleProperty = (name) => expectedReplayConsoleError.properties.find((property) => ts.isPropertyAssignment(property)
-    && property.name.getText(sourceFile) === name)?.initializer;
-  assert.deepEqual(expectedReplayConsoleError.properties.map((property) => property.name?.getText(sourceFile)).sort(), ['text', 'url'], '预期 console 诊断只允许 text 与 url');
-  const expectedConsoleText = replayConsoleProperty('text');
-  assert.ok(ts.isTemplateExpression(expectedConsoleText)
-    && expectedConsoleText.head.text === 'Failed to load resource: the server responded with a status of '
-    && expectedConsoleText.templateSpans.length === 1
-    && propertyCall(expectedConsoleText.templateSpans[0].expression, 'replay', 'status')
-    && expectedConsoleText.templateSpans[0].literal.text === ' ()', '预期 console 文本必须精确使用重放响应 status 与已刻画的 Chromium 完整诊断');
-  assert.ok(propertyCall(replayConsoleProperty('url'), 'replay', 'url'), '预期 console 诊断必须绑定 replay.url()');
-  const replayConsoleErrorIndex = bindings.get('replayConsoleErrorIndex');
-  const findReplayConsoleError = propertyCall(replayConsoleErrorIndex, consoleCollector.collector, 'findIndex');
-  const findReplayCallback = findReplayConsoleError?.arguments[0];
-  assert.ok(findReplayConsoleError
-    && findReplayCallback
-    && ts.isArrowFunction(findReplayCallback)
-    && ts.isIdentifier(findReplayCallback.parameters[0]?.name)
-    && ts.isBinaryExpression(findReplayCallback.body)
-    && findReplayCallback.body.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
-    && findReplayCallback.body.left.getText(sourceFile) === `${findReplayCallback.parameters[0].name.text}.url`
-    && propertyCall(findReplayCallback.body.right, 'replay', 'url'), 'console 诊断必须按 replay.url() 查找，不得按任意 422 文本过滤');
-  const replayConsolePresence = criticalAssertion('notEqual', (args) => args[0]?.getText(sourceFile) === 'replayConsoleErrorIndex'
-    && ts.isPrefixUnaryExpression(args[1])
-    && args[1].operator === ts.SyntaxKind.MinusToken
-    && ts.isNumericLiteral(args[1].operand)
-    && args[1].operand.text === '1', '重放 console URL 绑定断言');
-  afterBinding(replayConsolePresence, 'replayConsoleErrorIndex', '重放 console URL 绑定断言');
-  const replayConsoleRemoval = criticalAssertion('deepEqual', (args) => propertyCall(args[0], consoleCollector.collector, 'splice')?.arguments[0]?.getText(sourceFile) === 'replayConsoleErrorIndex'
-    && propertyCall(args[0], consoleCollector.collector, 'splice').arguments[1]?.getText(sourceFile) === '1'
-    && ts.isArrayLiteralExpression(args[1])
-    && args[1].elements.length === 1
-    && args[1].elements[0].getText(sourceFile) === 'expectedReplayConsoleError', '重放 console 精确消费断言');
-  afterBinding(replayConsoleRemoval, 'replayConsoleErrorIndex', '重放 console 精确消费断言');
+  const consoleEvidence = (expectedName, indexName, responseName, label) => {
+    const expected = bindings.get(expectedName);
+    assert.ok(expected && ts.isObjectLiteralExpression(expected), `${label} 必须构造精确 console 诊断`);
+    const property = (name) => expected.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+      && candidate.name.getText(sourceFile) === name)?.initializer;
+    assert.deepEqual(expected.properties.map((candidate) => candidate.name?.getText(sourceFile)).sort(), ['text', 'url'], `${label} console 诊断只允许 text 与 url`);
+    const expectedText = property('text');
+    assert.ok(ts.isTemplateExpression(expectedText)
+      && expectedText.head.text === 'Failed to load resource: the server responded with a status of '
+      && expectedText.templateSpans.length === 1
+      && propertyCall(expectedText.templateSpans[0].expression, responseName, 'status')
+      && expectedText.templateSpans[0].literal.text === ' ()', `${label} console 文本必须精确绑定真实响应 status`);
+    assert.ok(propertyCall(property('url'), responseName, 'url'), `${label} console 诊断必须绑定真实响应 URL`);
+    const index = bindings.get(indexName);
+    const find = propertyCall(index, consoleCollector.collector, 'findIndex');
+    const callback = find?.arguments[0];
+    assert.ok(find && callback && ts.isArrowFunction(callback), 'console findIndex 必须使用 arrow callback');
+    assert.ok(callback.parameters.length === 1 && ts.isIdentifier(callback.parameters[0].name), 'console findIndex callback 必须接收一个标识符参数');
+    assert.ok(ts.isBinaryExpression(callback.body)
+      && callback.body.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+      && callback.body.left.getText(sourceFile) === `${callback.parameters[0].name.text}.url`
+      && propertyCall(callback.body.right, responseName, 'url'), `${label} console 诊断必须按真实响应 URL 查找`);
+    const presence = criticalAssertion('notEqual', (args) => args[0]?.getText(sourceFile) === indexName
+      && ts.isPrefixUnaryExpression(args[1])
+      && args[1].operator === ts.SyntaxKind.MinusToken
+      && ts.isNumericLiteral(args[1].operand)
+      && args[1].operand.text === '1', `${label} console URL 绑定断言`);
+    afterBinding(presence, indexName, `${label} console URL 绑定断言`);
+    assert.ok(presence.position > responseAssertions.get(responseName).position, `${label} console 断言必须位于真实响应之后`);
+    const removal = criticalAssertion('deepEqual', (args) => propertyCall(args[0], consoleCollector.collector, 'splice')?.arguments[0]?.getText(sourceFile) === indexName
+      && propertyCall(args[0], consoleCollector.collector, 'splice').arguments[1]?.getText(sourceFile) === '1'
+      && ts.isArrayLiteralExpression(args[1])
+      && args[1].elements.length === 1
+      && args[1].elements[0].getText(sourceFile) === expectedName, `${label} console 精确消费断言`);
+    afterBinding(removal, indexName, `${label} console 精确消费断言`);
+  };
+  consoleEvidence('expectedOldTokenConsoleError', 'oldTokenConsoleErrorIndex', 'oldTokenResult', '旧 token 422');
+  consoleEvidence('expectedReplayConsoleError', 'replayConsoleErrorIndex', 'replay', '重放 422');
+
+  for (const responseName of ['oldTokenResult', 'replay']) {
+    const codeAssertion = criticalAssertion('equal', (args) => args[0]?.getText(sourceFile) === `(await ${responseName}.json()).code`
+      && ts.isStringLiteralLike(args[1])
+      && args[1].text === 'VALIDATION_FAILED', `${responseName} Problem code 断言`);
+    assert.ok(codeAssertion.position > responseAssertions.get(responseName).position, `${responseName} Problem code 必须位于真实响应之后`);
+  }
 
   const finalEvidenceAssertion = finalRequestAssertion.index > finalConsoleAssertion.index ? finalRequestAssertion : finalConsoleAssertion;
   const earlyTermination = nodesUnder(tryStatement.tryBlock).find((node) => node.getStart(sourceFile) < finalEvidenceAssertion.call.getStart(sourceFile)
@@ -1483,26 +1587,37 @@ function assertId01BrowserSmokeAllowedSurface(source) {
       || (ts.isCallExpression(node) && node.expression.getText(sourceFile) === 'process.exit')));
   assert.ok(!earlyTermination, 'ID-01 browser smoke 不得在最终证据序列前 return、throw 或 process.exit');
 
+  const genericReceipt = criticalAssertion('match', (args) => args[0]?.getText(sourceFile) === 'duplicateMessages[0].body'
+    && ts.isRegularExpressionLiteral(args[1])
+    && args[1].text === '/Your request was received\\./', '重复注册通用回执断言');
+  afterBinding(genericReceipt, 'duplicateMessages', '重复注册通用回执断言');
+  const genericNoLink = criticalAssertion('doesNotMatch', (args) => args[0]?.getText(sourceFile) === 'duplicateMessages[0].body'
+    && ts.isRegularExpressionLiteral(args[1])
+    && args[1].text === '/\\/verify\\?token=/', '重复注册无链接断言');
+  afterBinding(genericNoLink, 'duplicateMessages', '重复注册无链接断言');
+  const expectedApiSequence = [
+    ['/api/v1/accounts', '200'],
+    ['/api/v1/accounts/verification/resend', '200'],
+    ['/api/v1/accounts/verification', '422'],
+    ['/api/v1/accounts/verification', '200'],
+    ['/api/v1/accounts/verification', '422'],
+    ['/api/v1/accounts', '200'],
+  ];
+  const apiSequence = criticalAssertion('deepEqual', (args) => args[0]?.getText(sourceFile) === 'apiResponses'
+    && ts.isArrayLiteralExpression(args[1])
+    && args[1].elements.length === expectedApiSequence.length
+    && args[1].elements.every((element, index) => ts.isArrayLiteralExpression(element)
+      && element.elements.length === 2
+      && ts.isStringLiteralLike(element.elements[0])
+      && element.elements[0].text === expectedApiSequence[index][0]
+      && ts.isNumericLiteral(element.elements[1])
+      && element.elements[1].text === expectedApiSequence[index][1]), 'API 动作顺序断言');
+  assert.ok(apiSequence.position > responseAssertions.get('duplicateResult').position, 'API 动作顺序必须在全部真实响应后断言');
+
   const tryText = tryStatement.tryBlock.getText(sourceFile);
-  for (const required of [
-    "assert.equal((await firstRegisterResponse).status(), 200)",
-    "assert.equal((await verifyResponse).status(), 200)",
-    "assert.equal((await replay.json()).code, 'VALIDATION_FAILED')",
-    "assert.equal((await duplicateResponse).status(), 200)",
-    "assert.equal(accountState(email), '1|pending_verification')",
-    "assert.equal(accountState(email), '1|active')",
-    "message.mode === '600'",
-    'Your request was received.',
-    '邮箱已验证。',
-    '验证链接无效或已失效。',
-  ]) {
-    assert.ok(tryText.includes(required), `ID-01 browser smoke 缺少纵向证据：${required}`);
-  }
   assert.match(source, /const acceptedMessage = '请求已受理，请查收邮件。';/, '注册与重复注册必须断言逐字相同的通用文案');
-  assert.match(tryText, /getByText\(acceptedMessage, \{ exact: true \}\)/, '两次注册必须从真实 UI 读取同一通用文案');
-  assert.match(tryText, /setTimeout\(resolve,\s*(?:6[1-9]|[7-9]\d)_?\d{3}\)/, 'token 重放前必须等待超过一分钟窗口');
-  assert.ok(tryText.includes("assert.match(duplicateMessages[0].body, /Your request was received\\./)"), '重复注册新增邮件必须是通用回执');
-  assert.ok(tryText.includes("assert.doesNotMatch(duplicateMessages[0].body, /\\/verify\\?token=/)"), '重复注册新增邮件不得包含验证链接');
+  assert.ok((tryText.match(/getByText\(acceptedMessage, \{ exact: true \}\)/g) ?? []).length >= 3, '注册、重发与重复注册必须从各自真实 UI 读取同一通用文案');
+  for (const message of ['邮箱已验证。', '验证链接无效或已失效。']) assert.ok(tryText.includes(message), `ID-01 browser smoke 缺少 UI 结果：${message}`);
   assert.match(source, /'compose', '-p', composeProject, '-f', composeFile, 'exec', '-T', service/, 'compose helper 必须固定 project/file/exec -T');
 }
 
@@ -1736,40 +1851,62 @@ await browser.close();`;
 test('ID-01 browser smoke 使用独立的完整纵向验收允许面', () => {
   const id01Smoke = readFileSync(requireFile('test/id01-browser-smoke.mjs'), 'utf8');
   assert.doesNotThrow(() => assertId01BrowserSmokeAllowedSurface(id01Smoke));
-  const directSecretEvidence = `    assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');
-    assert.ok(!appLogs.includes(token), 'app 日志不得包含完整验证 token');
-    const csrfCookie = cookies.find((cookie) => cookie.name === '__Host-ttsync-csrf');
-    assert.ok(csrfCookie?.value, '必须捕获非空的命名 CSRF cookie');
-    assert.ok(cookies.every((cookie) => cookie.value.length > 0), '所有捕获的 cookie 值必须非空');
-    assert.ok(cookies.every((cookie) => !appLogs.includes(cookie.value)), 'app 日志不得包含任何捕获的 cookie 值');`;
+  const mutate = (needle, replacement) => {
+    assert.ok(id01Smoke.includes(needle), `ID-01 mutation 缺少锚点：${needle}`);
+    return id01Smoke.replace(needle, replacement);
+  };
+  const moveBefore = (line, anchor) => {
+    assert.ok(id01Smoke.includes(`${line}\n`) && id01Smoke.includes(anchor), `ID-01 顺序 mutation 缺少锚点：${line}`);
+    return id01Smoke.replace(`${line}\n`, '').replace(anchor, `${line}\n${anchor}`);
+  };
   for (const [name, source, expectedMessage] of [
-    ['伪装 PASS 而非显式 skip', id01Smoke.replace("skip: process.env.B01_RUN_BROWSER_SMOKE !== '1'", 'skip: false')],
-    ['非 HTTPS 首屏', id01Smoke.replace("'https://localhost:8443'", "'http://localhost:8443'")],
-    ['request listener startsWith', id01Smoke.replace('new URL(request.url()).origin !== baseOrigin', '!request.url().startsWith(baseUrl)')],
-    ['request listener 后置 decoy', id01Smoke.replace("    page.on('request',", "    await page.goto(baseUrl);\n    page.on('request',")],
-    ['缺 response 采集', id01Smoke.replace('apiResponses.push([new URL(response.url()).pathname, response.status()]);', 'void response;')],
-    ['outbox 非 app 容器', id01Smoke.replace("const output = composeExec('app', 'sh', '-c'", "const output = composeExec('postgres', 'sh', '-c'")],
-    ['目录权限 decoy', id01Smoke.replace('stat -c %a /tmp/ttsync-outbox', 'true # stat -c %a /tmp/ttsync-outbox')],
-    ['文件权限 decoy', id01Smoke.replace('  stat -c %a "$file"', '  true # stat -c %a "$file"')],
-    ['缺首次注册 200', id01Smoke.replace('assert.equal((await firstRegisterResponse).status(), 200);', 'assert.equal((await firstRegisterResponse).status(), 201);')],
-    ['缺验证 200', id01Smoke.replace('assert.equal((await verifyResponse).status(), 200);', 'assert.equal((await verifyResponse).status(), 201);')],
-    ['即时 429 冒充重放', id01Smoke.replace('assert.equal(replay.status(), 422);', 'assert.equal(replay.status(), 429);')],
-    ['重放 422 断言藏在环境分支', id01Smoke.replace('assert.equal(replay.status(), 422);', 'if (process.env.NEVER_SET) assert.equal(replay.status(), 422);'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
-    ['重放 422 断言藏在 catch', id01Smoke.replace('assert.equal(replay.status(), 422);', 'try { throw new Error(); } catch { assert.equal(replay.status(), 422); }'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
-    ['重放 422 断言藏在空数组循环', id01Smoke.replace('assert.equal(replay.status(), 422);', 'for (const ignored of []) { assert.equal(replay.status(), 422); }'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
-    ['重放响应后提前 return', id01Smoke.replace('const replay = await replayResponse;', 'const replay = await replayResponse;\n    return;'), /不得在最终证据序列前 return、throw 或 process\.exit/],
-    ['错误 body code', id01Smoke.replace("'VALIDATION_FAILED'", "'RATE_LIMITED'")],
-    ['缺重复注册 200', id01Smoke.replace('assert.equal((await duplicateResponse).status(), 200);', 'assert.equal((await duplicateResponse).status(), 201);')],
-    ['等待窗口不足', id01Smoke.replace('61_000', '1_000')],
-    ['outbox 700 断言藏在环境分支', id01Smoke.replace("assert.equal(firstOutbox.directoryMode, '700');", "if (process.env.NEVER_SET) assert.equal(firstOutbox.directoryMode, '700');"), /outbox 700 断言 必须是 browser try block statement list 的直接表达式/],
-    ['吞掉预期 422 浏览器诊断', id01Smoke.replace("assert.notEqual(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');", "assert.equal(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');")],
-    ['预期 422 控制台诊断带额外后缀', id01Smoke.replace('the server responded with a status of ${replay.status()} ()`', 'the server responded with a status of ${replay.status()} () extra`'), /预期 console 文本必须精确使用重放响应 status/],
-    ['日志来自非 app 服务', id01Smoke.replace("'logs', '--no-color', 'app'", "'logs', '--no-color', 'postgres'")],
-    ['日志断言不可达 decoy', id01Smoke.replace("assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');", "if (false) assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');")],
-    ['日志秘密断言藏在环境分支', id01Smoke.replace("assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');", "if (process.env.NEVER_SET) assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');"), /app 日志密码断言 必须是 browser try block statement list 的直接表达式/],
-    ['日志秘密 iterable 为空', id01Smoke.replace(directSecretEvidence, "    for (const secret of []) {\n      assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');\n    }"), /必须恰好提供 app 日志密码断言/],
-    ['最终外联断言不可达 decoy', id01Smoke.replace('assert.deepEqual(externalRequests, []);', 'if (false) assert.deepEqual(externalRequests, []);')],
-    ['缺 finally close', id01Smoke.replace('await browser.close();', 'void browser;')],
+    ['伪装 PASS 而非显式 skip', mutate("skip: process.env.B01_RUN_BROWSER_SMOKE !== '1'", 'skip: false')],
+    ['非 HTTPS 首屏', mutate("'https://localhost:8443'", "'http://localhost:8443'")],
+    ['request listener startsWith', mutate('new URL(request.url()).origin !== baseOrigin', '!request.url().startsWith(baseUrl)')],
+    ['request listener 无参数', mutate("page.on('request', (request) =>", "page.on('request', () =>"), /ID-01 request listener 必须接收一个标识符参数/],
+    ['request listener 后置 decoy', mutate("    page.on('request',", "    await page.goto(baseUrl);\n    page.on('request',")],
+    ['缺 response 采集', mutate('apiResponses.push([new URL(response.url()).pathname, response.status()]);', 'void response;')],
+    ['outbox 非 app 容器', mutate("const output = composeExec('app', 'sh', '-c'", "const output = composeExec('postgres', 'sh', '-c'")],
+    ['目录权限 decoy', mutate('stat -c %a /tmp/ttsync-outbox', 'true # stat -c %a /tmp/ttsync-outbox')],
+    ['文件权限 decoy', mutate('  stat -c %a "$file"', '  true # stat -c %a "$file"')],
+    ['首次注册状态错误', mutate('assert.equal(firstRegister.status(), 200);', 'assert.equal(firstRegister.status(), 201);')],
+    ['重发状态错误', mutate('assert.equal(resendResult.status(), 200);', 'assert.equal(resendResult.status(), 201);')],
+    ['旧 token 冒充 429', mutate('assert.equal(oldTokenResult.status(), 422);', 'assert.equal(oldTokenResult.status(), 429);')],
+    ['新 token 状态错误', mutate('assert.equal(newTokenResult.status(), 200);', 'assert.equal(newTokenResult.status(), 201);')],
+    ['即时重放冒充 429', mutate('assert.equal(replay.status(), 422);', 'assert.equal(replay.status(), 429);')],
+    ['重复注册状态错误', mutate('assert.equal(duplicateResult.status(), 200);', 'assert.equal(duplicateResult.status(), 201);')],
+    ['首次 pending DB 断言不可达', mutate("assert.equal(pendingAfterRegister, '1|pending_verification');", "if (false) assert.equal(pendingAfterRegister, '1|pending_verification');"), /pendingAfterRegister DB 状态断言 必须是 browser try block statement list 的直接表达式/],
+    ['旧 token 后 pending DB 断言仅为字符串', mutate("assert.equal(pendingAfterOldToken, '1|pending_verification');", 'void "pendingAfterOldToken === pending_verification";'), /必须恰好提供 pendingAfterOldToken DB 状态断言/],
+    ['新 token 后 active DB 断言藏入死函数', mutate("assert.equal(activeAfterNewToken, '1|active');", "function deadStateCheck() { assert.equal(activeAfterNewToken, '1|active'); }"), /activeAfterNewToken DB 状态断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放后 active DB 断言不可达', mutate("assert.equal(activeAfterReplay, '1|active');", "if (false) assert.equal(activeAfterReplay, '1|active');"), /activeAfterReplay DB 状态断言 必须是 browser try block statement list 的直接表达式/],
+    ['旧 token DB 读取早于响应', moveBefore('    const pendingAfterOldToken = accountState(email);', '    const oldTokenResult = await oldTokenResponse;'), /pendingAfterOldToken 必须在 oldTokenResult 真实响应后读取/],
+    ['首次文件 600 断言不可达', mutate("assert.ok(firstOutbox.messages.every((message) => message.mode === '600'), 'outbox 邮件权限必须全部为 600');", "if (false) assert.ok(firstOutbox.messages.every((message) => message.mode === '600'), 'outbox 邮件权限必须全部为 600');"), /firstOutbox 文件 600 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重发文件 600 证据仅为字符串', mutate("assert.ok(secondOutbox.messages.every((message) => message.mode === '600'), '重发后 outbox 邮件权限必须全部为 600');", 'void "secondOutbox message.mode === 600";'), /必须恰好提供 secondOutbox 文件 600 断言/],
+    ['最终文件 600 callback 无参数', mutate('finalOutbox.messages.every((message) => message.mode', 'finalOutbox.messages.every(() => true && message.mode'), /finalOutbox 文件 mode callback 必须接收一个标识符参数/],
+    ['重发 outbox 读取早于响应', moveBefore('    const secondOutbox = readOutbox();', '    const resendResult = await resendResponse;'), /secondOutbox 必须在 resendResult 真实响应后读取/],
+    ['首次 outbox 700 断言藏在环境分支', mutate("assert.equal(firstOutbox.directoryMode, '700');", "if (process.env.NEVER_SET) assert.equal(firstOutbox.directoryMode, '700');"), /firstOutbox 700 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重发邮件数量错误', mutate("assert.equal(resendMessages.length, 1, '重发必须只新增一封验证邮件');", "assert.equal(resendMessages.length, 2, '重发必须只新增一封验证邮件');")],
+    ['token 未换代', mutate("assert.notEqual(newToken, token, '重发必须生成新 token');", "assert.equal(newToken, token, '重发必须生成新 token');")],
+    ['等待窗口不足', mutate('61_000', '1_000')],
+    ['重放 422 断言藏在环境分支', mutate('assert.equal(replay.status(), 422);', 'if (process.env.NEVER_SET) assert.equal(replay.status(), 422);'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放响应后提前 return', mutate('const replay = await replayResponse;', 'const replay = await replayResponse;\n    return;'), /不得在最终证据序列前 return、throw 或 process\.exit/],
+    ['旧 token Problem code 错误', mutate("assert.equal((await oldTokenResult.json()).code, 'VALIDATION_FAILED');", "assert.equal((await oldTokenResult.json()).code, 'RATE_LIMITED');")],
+    ['重放 Problem code 错误', mutate("assert.equal((await replay.json()).code, 'VALIDATION_FAILED');", "assert.equal((await replay.json()).code, 'RATE_LIMITED');")],
+    ['吞掉旧 token 422 浏览器诊断', mutate("assert.notEqual(oldTokenConsoleErrorIndex, -1, '必须采集绑定到旧 token 响应 URL 的 Chromium 422 诊断');", "assert.equal(oldTokenConsoleErrorIndex, -1, '必须采集绑定到旧 token 响应 URL 的 Chromium 422 诊断');")],
+    ['旧 token console 文本加后缀', mutate('the server responded with a status of ${oldTokenResult.status()} ()`', 'the server responded with a status of ${oldTokenResult.status()} () extra`'), /旧 token 422 console 文本必须精确绑定真实响应 status/],
+    ['重放 console 断言不可达', mutate("assert.notEqual(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');", "if (false) assert.notEqual(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');"), /重放 422 console URL 绑定断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放 console findIndex callback 无参数', mutate('consoleErrors.findIndex((entry) => entry.url === replay.url())', 'consoleErrors.findIndex(() => true)'), /console findIndex callback 必须接收一个标识符参数/],
+    ['重复注册通用回执断言不可达', mutate('assert.match(duplicateMessages[0].body, /Your request was received\\./);', 'if (false) assert.match(duplicateMessages[0].body, /Your request was received\\./);'), /重复注册通用回执断言 必须是 browser try block statement list 的直接表达式/],
+    ['API 动作顺序错误', mutate("['/api/v1/accounts/verification/resend', 200]", "['/api/v1/accounts/verification/resend', 201]")],
+    ['日志来自非 app 服务', mutate("'logs', '--no-color', 'app'", "'logs', '--no-color', 'postgres'")],
+    ['日志密码断言不可达', mutate("assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');", "if (false) assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');"), /app 日志密码断言 必须是 browser try block statement list 的直接表达式/],
+    ['日志首次 token 断言仅为字符串', mutate("assert.ok(!appLogs.includes(token), 'app 日志不得包含首次验证 token');", 'void "appLogs without token";'), /必须恰好提供 app 日志 token 断言/],
+    ['日志重发 token 断言不可达', mutate("assert.ok(!appLogs.includes(newToken), 'app 日志不得包含重发验证 token');", "if (false) assert.ok(!appLogs.includes(newToken), 'app 日志不得包含重发验证 token');"), /app 日志重发 token 断言 必须是 browser try block statement list 的直接表达式/],
+    ['最终外联断言不可达', mutate('assert.deepEqual(externalRequests, []);', 'if (false) assert.deepEqual(externalRequests, []);')],
+    ['最终 console 断言不可达', mutate('assert.deepEqual(consoleErrors, []);', 'if (false) assert.deepEqual(consoleErrors, []);')],
+    ['CSRF find callback 无参数', mutate('cookies.find((cookie) =>', 'cookies.find(() =>'), /CSRF cookie find callback 必须接收一个标识符参数/],
+    ['cookie log every callback 无参数', mutate('cookies.every((cookie) => !appLogs.includes(cookie.value))', 'cookies.every(() => true)'), /cookie every callback 必须接收一个标识符参数/],
+    ['缺 finally close', mutate('await browser.close();', 'void browser;')],
   ]) {
     assert.throws(
       () => assertId01BrowserSmokeAllowedSurface(source),
@@ -1834,19 +1971,32 @@ onMounted(async () => {
       <button role="tab" type="button" @click="activeRole = 'participant'">参与者视图</button>
       <button role="tab" type="button" @click="activeRole = 'spectator'">观众视图</button>
     </nav>
-    <form @submit.prevent="register">
+    <form aria-label="创建账号" @submit.prevent="register">
       <label for="register-email">邮箱</label><input id="register-email" v-model="email" type="email">
       <label for="register-password">密码</label><input id="register-password" v-model="password" type="password">
       <button type="submit" :disabled="submitting">注册</button>
     </form>
-    <form @submit.prevent="resend">
+    <form aria-label="重发验证邮件" @submit.prevent="resend">
       <button type="submit" :disabled="submitting">重发验证邮件</button>
     </form>
     <p role="status" aria-live="polite">{{ registerMessage }}{{ resendMessage }}{{ verificationMessage }}</p>
   </main>
 </template>`,
   };
-  assert.doesNotThrow(() => assertClientAllowedSurface(id01Sources), 'ID-01 合法客户端 fixture 必须通过');
+  assert.doesNotThrow(() => assertClientAllowedSurface(id01Sources, { requireId01: true }), 'ID-01 合法客户端 fixture 必须通过');
+  assert.throws(
+    () => assertClientAllowedSurface(validSources, { requireId01: true }),
+    { name: 'AssertionError', message: /真实客户端必须保留 ID-01/ },
+    '删除整个 ID-01 客户端能力不得回退为 B-01 空壳校验',
+  );
+  assert.throws(
+    () => assertClientAllowedSurface({
+      ...id01Sources,
+      'App.vue': id01Sources['App.vue'].replace('import { onMounted, ref }', 'import { ref }'),
+    }, { requireId01: true }),
+    { name: 'AssertionError', message: /真实客户端必须保留 ID-01/ },
+    '删除 onMounted 能力标记不得让真实客户端静默降级为 B-01',
+  );
   for (const [name, app, expectedMessage] of [
     ['动态/其他 API URL', id01Sources['App.vue'].replace('fetch(path,', "fetch('/api/v1/teams',")],
     ['绝对 URL', id01Sources['App.vue'].replace('fetch(path,', "fetch('https://example.invalid/api',")],
@@ -1936,6 +2086,10 @@ test('B-01 Compose 与 Caddy 只暴露三容器 HTTPS 运行面', () => {
     '${TTSYNC_PUBLIC_ORIGIN:-https://localhost:8443}',
     'app PUBLIC_ORIGIN 必须来自 TTSYNC_PUBLIC_ORIGIN 且默认匹配本地 Caddy HTTPS',
   );
+  assert.equal(compose.services?.app?.environment?.MAIL_OUTBOX_DIR, '${TTSYNC_MAIL_OUTBOX_DIR:-}', 'Compose 必须显式透传测试 outbox');
+  for (const name of ['ADDR', 'FROM', 'USERNAME', 'PASSWORD']) {
+    assert.equal(compose.services?.app?.environment?.[`SMTP_${name}`], `\${TTSYNC_SMTP_${name}:-}`, `Compose 必须透传 SMTP_${name}`);
+  }
   const caddySource = readFileSync(requireFile('deployments/Caddyfile'), 'utf8');
   assert.match(caddySource, /tls\s+internal/, 'Caddy 必须是唯一的本地 HTTPS 入口');
   assert.match(caddySource, /reverse_proxy\s+app:8080/, 'Caddy 只能反向代理应用服务');
@@ -1943,18 +2097,26 @@ test('B-01 Compose 与 Caddy 只暴露三容器 HTTPS 运行面', () => {
 
 test('Compose smoke 复用同一 project 运行 ID-01 并恢复环境', () => {
   const smoke = readFileSync(requireFile('scripts/smoke-b01.ps1'), 'utf8');
-  for (const savedName of ['previousPublicOrigin', 'previousId01ComposeProject', 'previousId01ComposeFile']) {
+  for (const savedName of ['previousPublicOrigin', 'previousId01ComposeProject', 'previousId01ComposeFile', 'previousMailOutboxDir', 'previousSmtpAddr', 'previousSmtpFrom', 'previousSmtpUsername', 'previousSmtpPassword']) {
     assert.match(smoke, new RegExp(`\\$${savedName}\\s*=\\s*\\$env:`), `smoke 必须保存 ${savedName} 对应环境`);
   }
   assert.match(smoke, /\$env:TTSYNC_PUBLIC_ORIGIN\s*=\s*\$env:B01_BASE_URL/, 'PUBLIC_ORIGIN 必须精确复用 B01_BASE_URL');
   assert.match(smoke, /\$env:ID01_COMPOSE_PROJECT\s*=\s*\$script:projectName/, 'ID-01 必须复用同一随机 Compose project');
   assert.match(smoke, /\$env:ID01_COMPOSE_FILE\s*=\s*\$script:composeFile/, 'ID-01 必须复用同一 Compose 文件');
+  assert.match(smoke, /\$env:TTSYNC_MAIL_OUTBOX_DIR\s*=\s*['"]\/tmp\/ttsync-outbox['"]/, 'smoke 必须显式启用测试 outbox');
+  for (const name of ['ADDR', 'FROM', 'USERNAME', 'PASSWORD']) {
+    assert.match(smoke, new RegExp(`\\$env:TTSYNC_SMTP_${name}\\s*=\\s*['\"]['\"]`), `smoke 必须清空宿主 SMTP_${name}`);
+  }
   const b01Browser = smoke.lastIndexOf("@('--test', 'test/b01-browser-smoke.mjs')");
   const id01Browser = smoke.indexOf("@('--test', 'test/id01-browser-smoke.mjs')");
   assert.ok(b01Browser >= 0 && id01Browser > b01Browser, 'ID-01 browser 必须在最终 B-01 browser 通过后单独运行');
   assert.match(smoke, /\$env:TTSYNC_PUBLIC_ORIGIN\s*=\s*\$previousPublicOrigin/, 'smoke finally 必须恢复 TTSYNC_PUBLIC_ORIGIN');
   assert.match(smoke, /\$env:ID01_COMPOSE_PROJECT\s*=\s*\$previousId01ComposeProject/, 'smoke finally 必须恢复 ID01_COMPOSE_PROJECT');
   assert.match(smoke, /\$env:ID01_COMPOSE_FILE\s*=\s*\$previousId01ComposeFile/, 'smoke finally 必须恢复 ID01_COMPOSE_FILE');
+  assert.match(smoke, /\$env:TTSYNC_MAIL_OUTBOX_DIR\s*=\s*\$previousMailOutboxDir/, 'smoke finally 必须恢复 outbox 环境');
+  for (const [name, saved] of [['ADDR', 'Addr'], ['FROM', 'From'], ['USERNAME', 'Username'], ['PASSWORD', 'Password']]) {
+    assert.match(smoke, new RegExp(`\\$env:TTSYNC_SMTP_${name}\\s*=\\s*\\$previousSmtp${saved}`), `smoke finally 必须恢复 SMTP_${name}`);
+  }
 });
 
 test('Task 5 镜像、浏览器与 Caddy 验收可重现且封闭绕过面', () => {
@@ -2069,7 +2231,7 @@ test('客户端空壳由浏览器 smoke 的交互、请求和 console 允许面�
   const clientSourceDirectory = join(repositoryRoot, 'clients/web/src');
   const sourceFiles = filesUnder('clients/web/src').map((file) => relative(clientSourceDirectory, file)).sort();
   assert.deepEqual(sourceFiles, ['App.vue', 'main.ts', 'style.css'], 'B-01 客户端只允许空壳源文件');
-  assertClientAllowedSurface(Object.fromEntries(sourceFiles.map((file) => [file, readFileSync(join(clientSourceDirectory, file), 'utf8')])));
+  assertClientAllowedSurface(Object.fromEntries(sourceFiles.map((file) => [file, readFileSync(join(clientSourceDirectory, file), 'utf8')])), { requireId01: true });
   const clientPackage = JSON.parse(readFileSync(requireFile('clients/web/package.json'), 'utf8'));
   const allowedClientPackages = new Set(['vue', '@vitejs/plugin-vue', 'typescript', 'vite', 'vue-tsc']);
   const declaredClientPackages = [...Object.keys(clientPackage.dependencies ?? {}), ...Object.keys(clientPackage.devDependencies ?? {})];

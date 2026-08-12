@@ -25,33 +25,33 @@
 | 契约 | 冻结内容 |
 |---|---|
 | 目标 | 注册与验证账号、认证、执行令牌／邮箱／密码／会话目标命令、解析当前登录会话 |
-| 输入 | 对应目标命令、未认证请求事实或当前登录会话凭据、调用者提供的工作单元、请求时间 |
+| 输入 | 对应目标命令、未认证请求事实或当前登录会话凭据、请求时间；HTTP Adapter 不传递 `pgx.Tx` 或业务工作单元 |
 | 结果 | `AccountID`、当前邮箱验证状态、会话事实或不暴露账号存在性的通用受理结果；不返回团队或房间角色 |
 | 稳定失败 | `invalid_credentials`、`account_unverified`、`token_invalid_or_expired`、`session_invalid_or_expired`、`revision_conflict`、`rate_limited` |
 | 重新鉴权 | 每次受保护调用重新解析登录会话及账号验证状态；不得从登录会话缓存团队或房间权限 |
-| 事务参与 | 在调用者传入的 PostgreSQL 工作单元中锁定并改变身份事实；只报告结果，不决定共享提交 |
+| 事务参与 | 单一所有者命令由 `identity` 自行开启事务，在内部完成锁定、权限与不变量校验并提交或回滚；只有真正跨 Module 的原子用例才加入最外层用例协调者建立的共享事务 |
 
 ### `team` Module
 
 | 契约 | 冻结内容 |
 |---|---|
 | 目标 | 创建团队、接受邀请、改变成员生命周期／角色、离开团队、确保游戏档案、改变项目／档案／模板／长期头像引用；登记头像资产元数据、推进可用性、恢复期与 GC 状态；判断团队能力与主持资格 |
-| 输入 | 目标型命令、`AccountID` 或明确的未认证身份事实、目标聚合的 `expectedRevision`、调用者提供的工作单元、请求时间 |
+| 输入 | 目标型命令、`AccountID` 或明确的未认证身份事实、目标聚合的 `expectedRevision`、请求时间；需要跨 Module 原子协调时再使用内部协调上下文 |
 | 结果 | 稳定团队／成员／档案标识、实际修订号、是否改变及最小资格事实；不暴露内部行结构 |
 | 稳定失败 | `authentication_required`、`account_unverified`、`team_forbidden`、`invitation_invalid_or_expired`、`member_ineligible`、`last_administrator`、`active_hosting_conflict`、`binding_conflict`、`profile_conflict`、`avatar_state_conflict`、`revision_conflict` |
 | 重新鉴权 | 每个目标命令都在当前工作单元通过 `identity` Interface 重新取得账号验证事实，再由 `team` 自行校验其拥有的绑定、成员启停、管理员和目标资源状态；跨房间规则同时请求 `activity` Interface 的当前事实 |
-| 事务参与 | 在调用者传入的 PostgreSQL 工作单元中执行条件写入、唯一性与提交后不变量检查；不持有提交权 |
+| 事务参与 | 单一所有者命令由 `team` 自行开启并完成事务；真正跨 Module 的原子用例才由最外层用例协调者持有共享提交权 |
 
 ### `activity` Module
 
 | 契约 | 冻结内容 |
 |---|---|
 | 目标 | 执行类型化房间命令、读取角色化完整房间快照、判断成员是否仍主持开放房间；命令内部覆盖主持、访问、人员牌、认领、队伍与对局 |
-| 输入 | `roomId`、`commandId`、操作者凭据事实、`expectedRevision`、类型化 payload、调用者提供的工作单元；快照读取带当前访问凭据 |
+| 输入 | `roomId`、`commandId`、操作者凭据事实、`expectedRevision`、类型化 payload；快照读取带当前访问凭据，跨 Module 原子用例另带内部协调上下文 |
 | 结果 | 命令标识、实际房间修订号、`changed` 和必要目标结果，或同一修订号下的角色化完整房间快照与服务端计算 capability |
 | 稳定失败 | `authentication_required`、`room_not_visible`、`room_forbidden`、`host_ineligible`、`room_state_conflict`、`revision_conflict`、`command_reuse_conflict`、`claim_conflict`、`capacity_conflict` |
 | 重新鉴权 | 每条写命令和每次快照读取都通过 `identity` Interface 解析当前账号凭据，通过 `team` Interface 取得当前成员、管理员、项目和主持资格事实；房间访问会话与观众会话由 `activity` 自行解析，HTTP 侧仅传递原始凭据与目标输入 |
-| 事务参与 | 写命令在调用者传入的 PostgreSQL 工作单元中完成鉴权、规则、状态、一次 revision 递增和事务内失效通知；不提前或单独提交 |
+| 事务参与 | 单一所有者写命令由 `activity` 自行开启并完成事务，在其中完成鉴权、规则、状态、一次 revision 递增和事务内失效通知；跨 Module 原子用例才交由最外层用例协调者统一提交 |
 
 #### MVP-08 命令幂等与并发判定契约
 
@@ -61,7 +61,7 @@
 
 旧 `expectedRevision` 的拒绝优先于语义 no-op，并稳定返回 `revision_conflict`。基于当前 revision 且通过鉴权与领域规则的合法 no-op 返回 `changed: false`；`changed: false` 不递增 revision 且不登记 `NOTIFY`。
 
-完整判定顺序为：解析 `commandId` → 核对操作者并拒绝复用冲突 → 核对请求指纹并拒绝复用冲突 → 命中相同幂等键时返回首次已提交成功结果 → 校验 `expectedRevision` → 重新鉴权身份与权限 → 校验领域规则 → 判断语义是否改变 → 写入状态 → 递增 revision → 登记 `NOTIFY` → 记录命令结果 → 由应用编排统一提交。
+完整判定顺序为：解析 `commandId` → 核对操作者并拒绝复用冲突 → 核对请求指纹并拒绝复用冲突 → 命中相同幂等键时返回首次已提交成功结果 → 校验 `expectedRevision` → 重新鉴权身份与权限 → 校验领域规则 → 判断语义是否改变 → 写入状态 → 递增 revision → 登记 `NOTIFY` → 记录命令结果 → 由该深 Module 提交；若该命令处于真正的跨 Module 原子用例，则改由最外层用例协调者统一提交。
 
 仅 `changed: true` 执行写入状态、递增 revision 与登记 `NOTIFY`；合法 no-op 仍记录其首次命令结果。任何失败均整体回滚，命令结果与占位均不持久化；失败后的后续重试重新走鉴权、版本与领域规则，没有已提交成功的 ledger 时不以旧失败制造 `command_reuse_conflict`。该顺序是 Interface 契约，不由 Adapter 或调用者改排。
 
@@ -78,9 +78,9 @@
 
 ## 共享 PostgreSQL 工作单元
 
-应用编排是跨 Module 工作单元的唯一发起者和完成者：建立工作单元，按 `identity → team → activity` 的统一所有权顺序调用 Interface，最后只执行一次提交；任一步稳定失败或 Adapter 故障都只执行一次统一回滚。领域 Module 可以登记事务内 `NOTIFY`，但通知仅在同一提交成功后可见；Module 不创建嵌套提交点，也不把部分结果暴露成成功。
+单一所有者的深 Module 写命令自行开启并完成 PostgreSQL 事务；事务、锁、权限和领域不变量不外泄给 HTTP Adapter、`internal/app` 组装层或客户端。当前 `identity` 注册、重发和验证都属于这一形状。
 
-单一所有者写用例仍由应用编排提供工作单元，以保持同一调用形状。`reporting` 查询由应用编排发起一致只读工作单元。锁的具体表、SQL 与超时属于 PostgreSQL Adapter 的 Implementation；领域 Interface 只承诺稳定失败和原子结果。该难以逆转且非显然的取舍记录在 [ADR-0001](../adr/0001-shared-postgresql-work-unit.md)。
+只有一个用例必须原子改变多个 Module 所有权事实时，最外层**用例协调者**才建立共享工作单元，按 `identity → team → activity` 的统一所有权顺序调用事务内 seam，最后只提交或回滚一次；它不是 Chi Handler，也不是默认应用组装层。领域 Module 不创建嵌套提交点，也不把部分结果暴露成成功。`reporting` 查询可由最外层用例协调者发起一致只读工作单元。锁的具体表、SQL 与超时属于 PostgreSQL Adapter 的 Implementation；领域 Interface 只承诺稳定失败和原子结果。该跨模块例外记录在 [ADR-0001](../adr/0001-shared-postgresql-work-unit.md)。
 
 ## 跨 Module 场景
 

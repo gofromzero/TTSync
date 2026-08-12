@@ -248,8 +248,8 @@ func TestIdentityPostsRequireExactJSONKeysAndInvitationTokenPresenceSemantics(t 
 
 			New(config).ServeHTTP(response, request)
 
-			if response.Code != http.StatusBadRequest && response.Code != http.StatusUnprocessableEntity {
-				t.Fatalf("status = %d, want 400 or 422", response.Code)
+			if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"code":"VALIDATION_FAILED"`) {
+				t.Fatalf("response = %d %q, want 422 validation", response.Code, response.Body.String())
 			}
 			if called != 0 {
 				t.Fatalf("identity called %d times", called)
@@ -304,17 +304,29 @@ func TestIdentityPostsRejectOriginAndCSRFMismatchesBeforeIdentity(t *testing.T) 
 	}
 }
 
-func TestIdentityPostsRejectMalformedRequestsBeforeIdentity(t *testing.T) {
-	tests := []struct{ name, contentType, body string }{
-		{name: "missing media type", body: `{"email":"user@example.com","password":"a secure passphrase"}`},
-		{name: "wrong media type", contentType: "text/plain", body: `{"email":"user@example.com","password":"a secure passphrase"}`},
-		{name: "malformed JSON", contentType: "application/json", body: `{"email":`},
-		{name: "wrong JSON type", contentType: "application/json", body: `{"email":1,"password":"a secure passphrase"}`},
-		{name: "null field type", contentType: "application/json", body: `{"email":null,"password":"a secure passphrase"}`},
-		{name: "unknown field", contentType: "application/json", body: `{"email":"user@example.com","password":"a secure passphrase","admin":true}`},
-		{name: "trailing value", contentType: "application/json", body: `{"email":"user@example.com","password":"a secure passphrase"} {}`},
-		{name: "null", contentType: "application/json", body: `null`},
-		{name: "oversized", contentType: "application/json", body: `{"email":"user@example.com","password":"` + strings.Repeat("x", 70<<10) + `"}`},
+func TestIdentityPostsSeparateMalformedFramingFromContractValidation(t *testing.T) {
+	tests := []struct {
+		name, path, contentType, body string
+		wantStatus                    int
+		wantCode, wantPath            string
+	}{
+		{name: "missing media type", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase"}`, wantStatus: 400, wantCode: "MALFORMED_REQUEST"},
+		{name: "wrong media type", path: "/api/v1/accounts", contentType: "text/plain", body: `{"email":"user@example.com","password":"a secure passphrase"}`, wantStatus: 400, wantCode: "MALFORMED_REQUEST"},
+		{name: "malformed JSON", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":`, wantStatus: 400, wantCode: "MALFORMED_REQUEST"},
+		{name: "trailing value", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":"user@example.com","password":"a secure passphrase"} {}`, wantStatus: 400, wantCode: "MALFORMED_REQUEST"},
+		{name: "oversized", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":"user@example.com","password":"` + strings.Repeat("x", 70<<10) + `"}`, wantStatus: 400, wantCode: "MALFORMED_REQUEST"},
+		{name: "register wrong type", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":1,"password":"a secure passphrase"}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/email"},
+		{name: "register null field", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":null,"password":"a secure passphrase"}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/email"},
+		{name: "register unknown field", path: "/api/v1/accounts", contentType: "application/json", body: `{"email":"user@example.com","password":"a secure passphrase","admin":true}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/admin"},
+		{name: "register null object", path: "/api/v1/accounts", contentType: "application/json", body: `null`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/"},
+		{name: "register array", path: "/api/v1/accounts", contentType: "application/json", body: `[]`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/"},
+		{name: "register scalar", path: "/api/v1/accounts", contentType: "application/json", body: `"value"`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/"},
+		{name: "resend wrong type", path: "/api/v1/accounts/verification/resend", contentType: "application/json", body: `{"email":1}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/email"},
+		{name: "resend null", path: "/api/v1/accounts/verification/resend", contentType: "application/json", body: `{"email":null}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/email"},
+		{name: "resend unknown", path: "/api/v1/accounts/verification/resend", contentType: "application/json", body: `{"email":"user@example.com","admin":true}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/admin"},
+		{name: "verify wrong type", path: "/api/v1/accounts/verification", contentType: "application/json", body: `{"token":1}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/token"},
+		{name: "verify null", path: "/api/v1/accounts/verification", contentType: "application/json", body: `{"token":null}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/token"},
+		{name: "verify unknown", path: "/api/v1/accounts/verification", contentType: "application/json", body: `{"token":"01234567890123456789012345678901","admin":true}`, wantStatus: 422, wantCode: "VALIDATION_FAILED", wantPath: "/admin"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -325,8 +337,16 @@ func TestIdentityPostsRejectMalformedRequestsBeforeIdentity(t *testing.T) {
 					called++
 					return identity.AcceptedResult{Accepted: true}, nil
 				},
+				ResendVerification: func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error) {
+					called++
+					return identity.AcceptedResult{Accepted: true}, nil
+				},
+				VerifyEmail: func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error) {
+					called++
+					return identity.VerifiedResult{Verified: true}, nil
+				},
 			})
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", strings.NewReader(test.body))
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
 			if test.contentType != "" {
 				request.Header.Set("Content-Type", test.contentType)
 			}
@@ -337,8 +357,11 @@ func TestIdentityPostsRejectMalformedRequestsBeforeIdentity(t *testing.T) {
 
 			handler.ServeHTTP(response, request)
 
-			if response.Code != http.StatusBadRequest || response.Header().Get("Content-Type") != "application/problem+json" || !strings.Contains(response.Body.String(), `"code":"MALFORMED_REQUEST"`) {
+			if response.Code != test.wantStatus || response.Header().Get("Content-Type") != "application/problem+json" || !strings.Contains(response.Body.String(), `"code":"`+test.wantCode+`"`) {
 				t.Fatalf("response = %d %#v %q", response.Code, response.Header(), response.Body.String())
+			}
+			if test.wantPath != "" && !strings.Contains(response.Body.String(), `"path":"`+test.wantPath+`"`) {
+				t.Fatalf("response = %q, want violation path %q", response.Body.String(), test.wantPath)
 			}
 			if called != 0 {
 				t.Fatalf("identity called %d times", called)
@@ -407,6 +430,9 @@ func TestIdentityPostsMapDomainRateAndInternalErrors(t *testing.T) {
 		{name: "register rate limited", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase"}`, err: identity.ErrRateLimited, wantStatus: 429, wantCode: "RATE_LIMITED", wantRetryAfter: "60"},
 		{name: "resend rate limited", path: "/api/v1/accounts/verification/resend", body: `{"email":"user@example.com"}`, err: identity.ErrRateLimited, wantStatus: 429, wantCode: "RATE_LIMITED", wantRetryAfter: "60"},
 		{name: "verify rate limited", path: "/api/v1/accounts/verification", body: `{"token":"01234567890123456789012345678901"}`, err: identity.ErrRateLimited, wantStatus: 429, wantCode: "RATE_LIMITED", wantRetryAfter: "60"},
+		{name: "register delivery unavailable", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase"}`, err: identity.ErrDeliveryUnavailable, wantStatus: 503, wantCode: "SERVICE_UNAVAILABLE", wantRetryAfter: "60"},
+		{name: "resend delivery unavailable", path: "/api/v1/accounts/verification/resend", body: `{"email":"user@example.com"}`, err: identity.ErrDeliveryUnavailable, wantStatus: 503, wantCode: "SERVICE_UNAVAILABLE", wantRetryAfter: "60"},
+		{name: "verify delivery unavailable", path: "/api/v1/accounts/verification", body: `{"token":"01234567890123456789012345678901"}`, err: identity.ErrDeliveryUnavailable, wantStatus: 503, wantCode: "SERVICE_UNAVAILABLE", wantRetryAfter: "60"},
 		{name: "internal error", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase"}`, err: secretFailure, wantStatus: 500, wantCode: "INTERNAL_ERROR"},
 	}
 	for _, test := range tests {

@@ -83,7 +83,7 @@ func applicationConfigFromEnvironment() (app.Config, error) {
 		return app.Config{}, fmt.Errorf("MAIL_OUTBOX_DIR and SMTP configuration are mutually exclusive")
 	}
 	if !outboxSet && !smtpSet {
-		mailConfig.OutboxDir = "/tmp/ttsync-outbox"
+		return app.Config{}, fmt.Errorf("MAIL_OUTBOX_DIR or SMTP configuration is required")
 	} else if smtpSet {
 		if strings.TrimSpace(mailConfig.SMTPAddr) == "" || strings.TrimSpace(mailConfig.SMTPFrom) == "" {
 			return app.Config{}, fmt.Errorf("SMTP_ADDR and SMTP_FROM are required together")

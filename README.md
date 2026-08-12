@@ -13,6 +13,8 @@ npm ci
 npx --no-install playwright install chromium
 ```
 
+`.env.example` 仅为开发和烟测显式启用容器内 outbox。个人部署应删除 `TTSYNC_MAIL_OUTBOX_DIR`，并设置 `TTSYNC_SMTP_ADDR`、`TTSYNC_SMTP_FROM`；若需认证，再成对设置 `TTSYNC_SMTP_USERNAME` 与 `TTSYNC_SMTP_PASSWORD`。SMTP 服务器必须支持经过证书验证的 STARTTLS（TLS 1.2+）；未配置邮件投递时应用拒绝启动。
+
 ```powershell
 Copy-Item deployments/.env.example .env
 docker compose --env-file .env -f deployments/compose.yaml up --build --wait

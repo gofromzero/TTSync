@@ -126,6 +126,16 @@ test('验证令牌的无效原因统一窄化为 422 VALIDATION_FAILED', async (
   assert.equal(schema.properties.code.const, 'VALIDATION_FAILED');
 });
 
+test('注册、重发与验证固定可重试的 503 邮件依赖错误', async () => {
+  const api = await loadOpenApi();
+  for (const path of ['/v1/accounts', '/v1/accounts/verification/resend', '/v1/accounts/verification']) {
+    assert.equal(api.paths[path].post.responses['503'].$ref, '#/components/responses/ServiceUnavailable');
+  }
+  const schema = responseSchema(api, 'ServiceUnavailable');
+  assert.equal(schema.properties.status.const, 503);
+  assert.equal(schema.properties.code.const, 'SERVICE_UNAVAILABLE');
+});
+
 test('房间命令、成功结果和样例固定并发与幂等语义', async () => {
   const api = await loadOpenApi();
   const schemas = api.components.schemas;
@@ -216,6 +226,7 @@ test('全部错误状态均提供可解析的 Problem Details 样例', async () 
     'UnprocessableEntity',
     'TooManyRequests',
     'InternalServerError',
+    'ServiceUnavailable',
   ];
   for (const name of responseNames) {
     const media = api.components.responses[name].content['application/problem+json'];
@@ -257,7 +268,7 @@ test('每类错误响应窄化 status/code 并强制所需扩展', async () => {
     Forbidden: [403, ['FORBIDDEN']], NotFound: [404, ['RESOURCE_NOT_FOUND', 'ROOM_NOT_FOUND']],
     Conflict: [409, ['REVISION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'STATE_CONFLICT']],
     UnprocessableEntity: [422, ['VALIDATION_FAILED']], TooManyRequests: [429, ['RATE_LIMITED']],
-    InternalServerError: [500, ['INTERNAL_ERROR']],
+    InternalServerError: [500, ['INTERNAL_ERROR']], ServiceUnavailable: [503, ['SERVICE_UNAVAILABLE']],
   };
   for (const [name, [status, codes]] of Object.entries(expectations)) {
     const schema = responseSchema(api, name);

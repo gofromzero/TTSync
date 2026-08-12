@@ -27,20 +27,20 @@ func TestMigrationIsIdempotentAndRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("second Migrate() error = %v", err)
 	}
 
-	var version int64
-	var checksum string
-	var appliedAt time.Time
-	if err := pool.QueryRow(ctx, `SELECT version, checksum, applied_at FROM schema_migrations`).Scan(&version, &checksum, &appliedAt); err != nil {
+	var versions []int64
+	var checksumLengths []int
+	var allApplied bool
+	if err := pool.QueryRow(ctx, `SELECT array_agg(version ORDER BY version), array_agg(length(checksum) ORDER BY version), bool_and(applied_at IS NOT NULL) FROM schema_migrations`).Scan(&versions, &checksumLengths, &allApplied); err != nil {
 		t.Fatalf("read schema_migrations ledger: %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("ledger version = %d, want 1", version)
+	if !slices.Equal(versions, []int64{1, 2, 3}) {
+		t.Fatalf("ledger versions = %v, want [1 2 3]", versions)
 	}
-	if len(checksum) != 64 {
-		t.Fatalf("ledger checksum length = %d, want 64", len(checksum))
+	if !slices.Equal(checksumLengths, []int{64, 64, 64}) {
+		t.Fatalf("ledger checksum lengths = %v", checksumLengths)
 	}
-	if appliedAt.IsZero() {
-		t.Fatal("ledger applied_at is zero")
+	if !allApplied {
+		t.Fatal("a migration applied_at is null")
 	}
 
 	var tableNames []string

@@ -38,7 +38,7 @@ ACTIVITY_COMMAND_ORDER = (
     "递增 revision",
     "登记 `NOTIFY`",
     "记录命令结果",
-    "由应用编排统一提交",
+    "由该深 Module 提交；若该命令处于真正的跨 Module 原子用例，则改由最外层用例协调者统一提交",
 )
 EXPECTED_MVP_MODULES = {
     "MVP-01": {"identity", "team"},
@@ -432,11 +432,14 @@ def main() -> int:
     require(spec, r"MVP-01～MVP-11", "MVP 覆盖", failures)
     require(spec, r"故事 1～153", "故事覆盖", failures)
     require(adr, r"共享 PostgreSQL 工作单元", "共享工作单元 ADR", failures)
+    require(spec, r"单一所有者的深 Module 写命令自行开启并完成 PostgreSQL 事务", "深 Module 自持单一所有者命令事务", failures)
+    require(spec, r"事务、锁、权限和领域不变量不外泄给 HTTP Adapter、\`internal/app\` 组装层", "HTTP 与 app 不持有业务事务", failures)
+    require(adr, r"只有必须原子改变[^\n]*多个所有权事实[^\n]*最外层用例协调者建立共享工作单元", "ADR 仅为跨 Module 用例共享事务", failures)
 
     forbid(spec, r"\b(Create|Get|List|Update|Delete)(Account|Member|Room|Record|Team|Profile)s?\b", "表级 CRUD Interface", failures)
     forbid(spec, r"Chi[^\n]*(判断|决定|拥有)[^\n]*(权限|资格)", "Chi 判断领域权限", failures)
     forbid(spec, r"reporting[^\n]*(写入|回写|修改)[^\n]*(状态|领域)", "reporting 回写", failures)
-    forbid(spec, r"模块[^\n]*(自行|私自)[^\n]*提交", "模块私自提交共享事务", failures)
+    forbid(spec, r"共享[^\n]*Module[^\n]*(自行|私自)[^\n]*提交", "模块私自提交共享事务", failures)
     forbid(context, r"\b(Interface|Adapter|PostgreSQL|Chi)\b", "CONTEXT.md 实现术语", failures)
 
     if failures:

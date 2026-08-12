@@ -24,6 +24,7 @@ const (
 	argonParallelism = 1
 	argonSaltLength  = 16
 	argonKeyLength   = 32
+	maxLimiterKeys   = 4096
 )
 
 var breachedPasswords = map[string]struct{}{
@@ -80,7 +81,7 @@ func newVerificationToken(now time.Time, random func([]byte) (int, error)) (veri
 	return verificationToken{raw: raw, digest: sha256.Sum256(bytes), expiresAt: now.Add(24 * time.Hour)}, nil
 }
 
-// ponytail: 单实例进程内窗口；部署多实例且限速偏差成为问题时改共享存储。
+// ponytail: 个人测试流量下每次最多扫描 4096 个 key；多实例或扫描成为瓶颈时再换共享存储。
 func (l *limiter) allow(key string, now time.Time, minuteLimit, hourLimit int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -88,29 +89,37 @@ func (l *limiter) allow(key string, now time.Time, minuteLimit, hourLimit int) b
 		l.entries = make(map[string][]time.Time)
 	}
 	hourStart := now.Add(-time.Hour)
-	entries := l.entries[key]
-	kept := entries[:0]
-	for _, at := range entries {
-		if at.After(hourStart) {
-			kept = append(kept, at)
+	for candidate, timestamps := range l.entries {
+		kept := timestamps[:0]
+		for _, at := range timestamps {
+			if at.After(hourStart) {
+				kept = append(kept, at)
+			}
+		}
+		if len(kept) == 0 {
+			delete(l.entries, candidate)
+		} else {
+			l.entries[candidate] = kept
 		}
 	}
-	if len(kept) >= hourLimit {
-		l.entries[key] = kept
+	if _, exists := l.entries[key]; !exists && len(l.entries) >= maxLimiterKeys {
+		return false
+	}
+	entries := l.entries[key]
+	if len(entries) >= hourLimit {
 		return false
 	}
 	minuteStart := now.Add(-time.Minute)
 	minuteCount := 0
-	for _, at := range kept {
+	for _, at := range entries {
 		if at.After(minuteStart) {
 			minuteCount++
 		}
 	}
 	if minuteCount >= minuteLimit {
-		l.entries[key] = kept
 		return false
 	}
-	l.entries[key] = append(kept, now)
+	l.entries[key] = append(entries, now)
 	return true
 }
 

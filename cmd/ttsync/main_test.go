@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func clearMailEnvironment(t *testing.T) {
 	t.Helper()
@@ -23,6 +26,7 @@ func TestApplicationConfigFromEnvironmentPreservesValidValues(t *testing.T) {
 	clearMailEnvironment(t)
 	t.Setenv("DATABASE_URL", "postgres://example.test/ttsync")
 	t.Setenv("HTTP_ADDR", "127.0.0.1:9080")
+	t.Setenv("MAIL_OUTBOX_DIR", "/tmp/explicit-test-outbox")
 
 	config, err := applicationConfigFromEnvironment()
 	if err != nil {
@@ -34,8 +38,16 @@ func TestApplicationConfigFromEnvironmentPreservesValidValues(t *testing.T) {
 	if config.HTTPAddr != "127.0.0.1:9080" {
 		t.Fatalf("HTTPAddr = %q", config.HTTPAddr)
 	}
-	if config.PublicOrigin != "https://localhost:8443" || config.Mail.OutboxDir != "/tmp/ttsync-outbox" {
+	if config.PublicOrigin != "https://localhost:8443" || config.Mail.OutboxDir != "/tmp/explicit-test-outbox" {
 		t.Fatalf("defaults = origin %q mail %#v", config.PublicOrigin, config.Mail)
+	}
+}
+
+func TestApplicationConfigFromEnvironmentRejectsMissingMailDelivery(t *testing.T) {
+	clearMailEnvironment(t)
+	t.Setenv("DATABASE_URL", "postgres://example.test/ttsync")
+	if _, err := applicationConfigFromEnvironment(); err == nil {
+		t.Fatal("missing outbox and SMTP configuration must fail fast")
 	}
 }
 
@@ -83,6 +95,7 @@ func TestApplicationConfigFromEnvironmentCanonicalizesNumericPorts(t *testing.T)
 		t.Run(test.origin, func(t *testing.T) {
 			clearMailEnvironment(t)
 			t.Setenv("DATABASE_URL", "postgres://example.test/ttsync")
+			t.Setenv("MAIL_OUTBOX_DIR", "/tmp/test-outbox")
 			t.Setenv("PUBLIC_ORIGIN", test.origin)
 			config, err := applicationConfigFromEnvironment()
 			if err != nil {
@@ -123,6 +136,9 @@ func TestApplicationConfigFromEnvironmentRejectsInvalidOriginAndMail(t *testing.
 		t.Run(test.name, func(t *testing.T) {
 			clearMailEnvironment(t)
 			t.Setenv("DATABASE_URL", "postgres://example.test/ttsync")
+			if strings.HasPrefix(test.name, "origin ") || test.name == "HTTP origin" {
+				t.Setenv("MAIL_OUTBOX_DIR", "/tmp/test-outbox")
+			}
 			for name, value := range test.env {
 				t.Setenv(name, value)
 			}

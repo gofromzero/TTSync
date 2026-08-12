@@ -191,7 +191,7 @@ reporting 的历史、基础统计和六张 CSV（对局、队伍、人员、队
 
 ## sqlc seam
 
-sqlc 是各深模块内部的 PostgreSQL adapter 生成器，不是跨模块公共 interface。查询按模块用例组织，不按表生成通用 CRUD；调用者只学习用例接口、事务要求、revision/错误语义，不学习锁 SQL。事务由应用层显式开启，将同一个 `pgx.Tx` 交给该模块的 queries；跨模块用例由最外层协调者持有一个共享事务，仍按统一锁顺序调用。
+sqlc 是各深模块内部的 PostgreSQL adapter 生成器，不是跨模块公共 interface。查询按模块用例组织，不按表生成通用 CRUD；调用者只学习用例接口、revision 与稳定错误语义，不学习 `pgx.Tx` 或锁 SQL。单一所有者命令由对应深 Module 自行开启、提交或回滚事务；HTTP Adapter 与应用组装层不持有业务事务。只有必须原子改变多个 Module 所有权事实的用例，才由最外层用例协调者持有一个共享事务，并按统一锁顺序调用各 Module 的事务内 seam。
 
 | 模块查询文件（由首个消费者创建） | 用例组 | 必须封装的持久化语义 |
 |---|---|---|

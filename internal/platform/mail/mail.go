@@ -3,6 +3,8 @@ package mail
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -20,6 +23,7 @@ type Config struct {
 	SMTPFrom     string
 	SMTPUsername string
 	SMTPPassword string
+	smtpRootCAs  *x509.CertPool
 }
 
 func Deliver(ctx context.Context, config Config, to, rawToken string) error {
@@ -71,19 +75,61 @@ func Deliver(ctx context.Context, config Config, to, rawToken string) error {
 	if config.SMTPAddr == "" || config.SMTPFrom == "" {
 		return fmt.Errorf("mail delivery is not configured")
 	}
-	var auth smtp.Auth
+	host, _, err := net.SplitHostPort(config.SMTPAddr)
+	if err != nil {
+		return fmt.Errorf("parse SMTP address: %w", err)
+	}
+	if host == "" {
+		return fmt.Errorf("parse SMTP address: empty host")
+	}
+	connection, err := (&net.Dialer{}).DialContext(ctx, "tcp", config.SMTPAddr)
+	if err != nil {
+		return fmt.Errorf("connect SMTP: %w", err)
+	}
+	defer connection.Close()
+	if err := connection.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		return fmt.Errorf("set SMTP deadline: %w", err)
+	}
+	stopClose := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stopClose()
+	client, err := smtp.NewClient(connection, host)
+	if err != nil {
+		return fmt.Errorf("open SMTP client: %w", err)
+	}
+	defer client.Close()
+	if ok, _ := client.Extension("STARTTLS"); !ok {
+		return fmt.Errorf("SMTP server does not support required STARTTLS")
+	}
+	if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12, RootCAs: config.smtpRootCAs}); err != nil {
+		return fmt.Errorf("start SMTP TLS: %w", err)
+	}
 	if config.SMTPUsername != "" || config.SMTPPassword != "" {
 		if config.SMTPUsername == "" || config.SMTPPassword == "" {
 			return fmt.Errorf("SMTP credentials must be paired")
 		}
-		host, _, err := net.SplitHostPort(config.SMTPAddr)
-		if err != nil {
-			return fmt.Errorf("parse SMTP address: %w", err)
+		if err := client.Auth(smtp.PlainAuth("", config.SMTPUsername, config.SMTPPassword, host)); err != nil {
+			return fmt.Errorf("authenticate SMTP: %w", err)
 		}
-		auth = smtp.PlainAuth("", config.SMTPUsername, config.SMTPPassword, host)
 	}
-	if err := smtp.SendMail(config.SMTPAddr, auth, config.SMTPFrom, []string{to}, message); err != nil {
-		return fmt.Errorf("send mail: %w", err)
+	if err := client.Mail(config.SMTPFrom); err != nil {
+		return fmt.Errorf("set SMTP sender: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("set SMTP recipient: %w", err)
+	}
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("start SMTP message: %w", err)
+	}
+	if _, err := writer.Write(message); err != nil {
+		_ = writer.Close()
+		return fmt.Errorf("write SMTP message: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("finish SMTP message: %w", err)
+	}
+	if err := client.Quit(); err != nil {
+		return fmt.Errorf("quit SMTP: %w", err)
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-import type { components } from '../contracts/v1/generated/api';
+import type { components, paths } from '../contracts/v1/generated/api';
 
 type Command = components['schemas']['RoomCommand'];
 type Result = components['schemas']['RoomCommandResult'];
@@ -24,6 +24,7 @@ type _RoomNotFoundCode = Assert<Schemas['RoomNotFoundProblem']['code'] extends '
 type _RevisionConflictCode = Assert<Schemas['RevisionConflictProblem']['code'] extends 'REVISION_CONFLICT' ? true : false>;
 type _IdempotencyConflictCode = Assert<Schemas['IdempotencyConflictProblem']['code'] extends 'IDEMPOTENCY_CONFLICT' ? true : false>;
 type _StateConflictCode = Assert<Schemas['StateConflictProblem']['code'] extends 'STATE_CONFLICT' ? true : false>;
+type _RegistrationDeliveryUnavailableCode = Assert<paths['/v1/accounts']['post']['responses'][503]['content']['application/problem+json']['code'] extends 'SERVICE_UNAVAILABLE' ? true : false>;
 
 declare const command: Command;
 declare const result: Result;
