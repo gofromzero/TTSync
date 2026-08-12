@@ -49,10 +49,10 @@ done`);
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     const page = await context.newPage();
     const consoleErrors = [];
-    const expectedReplayConsoleErrors = [];
     page.on('console', (message) => {
-      if (message.type() === 'error' && !message.text().includes('status of 422')) consoleErrors.push(message.text());
-      if (message.type() === 'error' && message.text().includes('status of 422')) expectedReplayConsoleErrors.push(message.text());
+      if (message.type() === 'error') {
+        consoleErrors.push({ text: message.text(), url: message.location().url });
+      }
     });
     const externalRequests = [];
     page.on('request', (request) => {
@@ -102,8 +102,13 @@ done`);
     assert.equal(replay.status(), 422);
     assert.equal((await replay.json()).code, 'VALIDATION_FAILED');
     await page.getByText('验证链接无效或已失效。', { exact: true }).waitFor();
-    assert.equal(expectedReplayConsoleErrors.length, 1);
-    assert.match(expectedReplayConsoleErrors[0], /^Failed to load resource: the server responded with a status of 422/);
+    const expectedReplayConsoleError = {
+      text: `Failed to load resource: the server responded with a status of ${replay.status()} ()`,
+      url: replay.url(),
+    };
+    const replayConsoleErrorIndex = consoleErrors.findIndex((entry) => entry.url === replay.url());
+    assert.notEqual(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');
+    assert.deepEqual(consoleErrors.splice(replayConsoleErrorIndex, 1), [expectedReplayConsoleError]);
 
     const beforeDuplicateNames = new Set(firstOutbox.messages.map((message) => message.name));
     await page.goto(baseUrl);
