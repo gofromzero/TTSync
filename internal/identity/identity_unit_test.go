@@ -131,7 +131,7 @@ func TestHashPasswordProducesSelfDescribingArgon2idEncoding(t *testing.T) {
 		t.Fatalf("hash password: %v", err)
 	}
 	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" || parts[3] != "m=19456,t=2,p=1" {
+	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != "v=19" || parts[3] != "m=19456,t=2,p=1" {
 		t.Fatalf("encoded hash = %q", encoded)
 	}
 	decodedSalt, err := base64.RawStdEncoding.DecodeString(parts[4])
