@@ -56,4 +56,4 @@
 - [x] GREEN：在 `App.vue` 加原生表单；测试模式只通过 `docker compose exec` 读取 outbox，不公开 HTTP endpoint；仍恰好三个容器。
 - [x] 验证：contracts/MVP/structure/sqlc/web/Go/vet、真实 PostgreSQL、Caddy/Chromium、秘密扫描、资源零残留。
 - [x] Standards 与 Spec 最终复核；修完全部 finding 后中文提交。
-- [ ] 推送分支并关闭 #31。
+- [x] 推送分支并关闭 #31。
