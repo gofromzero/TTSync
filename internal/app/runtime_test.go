@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gofromzero/ttsync/internal/platform/mail"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestRunShutsDownAndClosesDatabase(t *testing.T) {
@@ -16,11 +19,13 @@ func TestRunShutsDownAndClosesDatabase(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- Run(ctx, Config{
-			DatabaseURL: "test-only",
-			HTTPAddr:    "127.0.0.1:0",
-			openDatabase: func(context.Context, string) (func(context.Context) error, func(), error) {
+			DatabaseURL:  "test-only",
+			HTTPAddr:     "127.0.0.1:0",
+			PublicOrigin: "https://localhost:8443",
+			Mail:         mail.Config{OutboxDir: t.TempDir()},
+			openDatabase: func(context.Context, string) (*pgxpool.Pool, func(context.Context) error, func(), error) {
 				close(opened)
-				return func(context.Context) error { return nil }, func() { close(closed) }, nil
+				return nil, func(context.Context) error { return nil }, func() { close(closed) }, nil
 			},
 		})
 	}()
@@ -52,10 +57,12 @@ func TestRunReturnsListenErrorAndClosesDatabase(t *testing.T) {
 	closed := false
 
 	err := Run(context.Background(), Config{
-		DatabaseURL: "test-only",
-		HTTPAddr:    "127.0.0.1:-1",
-		openDatabase: func(context.Context, string) (func(context.Context) error, func(), error) {
-			return func(context.Context) error { return nil }, func() { closed = true }, nil
+		DatabaseURL:  "test-only",
+		HTTPAddr:     "127.0.0.1:-1",
+		PublicOrigin: "https://localhost:8443",
+		Mail:         mail.Config{OutboxDir: t.TempDir()},
+		openDatabase: func(context.Context, string) (*pgxpool.Pool, func(context.Context) error, func(), error) {
+			return nil, func(context.Context) error { return nil }, func() { closed = true }, nil
 		},
 	})
 
@@ -71,10 +78,12 @@ func TestRunReturnsDatabaseOpenError(t *testing.T) {
 	want := errors.New("database unavailable")
 
 	err := Run(context.Background(), Config{
-		DatabaseURL: "test-only",
-		HTTPAddr:    "127.0.0.1:0",
-		openDatabase: func(context.Context, string) (func(context.Context) error, func(), error) {
-			return nil, nil, want
+		DatabaseURL:  "test-only",
+		HTTPAddr:     "127.0.0.1:0",
+		PublicOrigin: "https://localhost:8443",
+		Mail:         mail.Config{OutboxDir: t.TempDir()},
+		openDatabase: func(context.Context, string) (*pgxpool.Pool, func(context.Context) error, func(), error) {
+			return nil, nil, nil, want
 		},
 	})
 

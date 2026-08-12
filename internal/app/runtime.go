@@ -9,33 +9,43 @@ import (
 	"time"
 
 	"github.com/gofromzero/ttsync/internal/httpapi"
+	"github.com/gofromzero/ttsync/internal/identity"
+	"github.com/gofromzero/ttsync/internal/platform/mail"
 	"github.com/gofromzero/ttsync/internal/platform/postgres"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Config struct {
-	DatabaseURL string
-	HTTPAddr    string
+	DatabaseURL  string
+	HTTPAddr     string
+	PublicOrigin string
+	Mail         mail.Config
 
-	openDatabase func(context.Context, string) (func(context.Context) error, func(), error)
+	openDatabase func(context.Context, string) (*pgxpool.Pool, func(context.Context) error, func(), error)
 }
 
 func Run(ctx context.Context, config Config) error {
 	openDatabase := config.openDatabase
 	if openDatabase == nil {
-		openDatabase = func(ctx context.Context, databaseURL string) (func(context.Context) error, func(), error) {
+		openDatabase = func(ctx context.Context, databaseURL string) (*pgxpool.Pool, func(context.Context) error, func(), error) {
 			pool, err := postgres.Open(ctx, databaseURL)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
-			return postgres.Health(pool), pool.Close, nil
+			return pool, postgres.Health(pool), pool.Close, nil
 		}
 	}
 
-	ready, closeDatabase, err := openDatabase(ctx, config.DatabaseURL)
+	pool, ready, closeDatabase, err := openDatabase(ctx, config.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer closeDatabase()
+	mailConfig := config.Mail
+	mailConfig.PublicOrigin = config.PublicOrigin
+	identityModule := identity.New(pool, func(ctx context.Context, to, rawToken string) error {
+		return mail.Deliver(ctx, mailConfig, to, rawToken)
+	})
 
 	listener, err := net.Listen("tcp", config.HTTPAddr)
 	if err != nil {
@@ -46,8 +56,12 @@ func Run(ctx context.Context, config Config) error {
 	server := &http.Server{
 		Addr: config.HTTPAddr,
 		Handler: httpapi.New(httpapi.Config{
-			Ready: ready,
-			Web:   httpapi.WebAssets(),
+			Ready:              ready,
+			Web:                httpapi.WebAssets(),
+			PublicOrigin:       config.PublicOrigin,
+			Register:           identityModule.Register,
+			ResendVerification: identityModule.ResendVerification,
+			VerifyEmail:        identityModule.VerifyEmail,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

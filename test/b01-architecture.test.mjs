@@ -55,6 +55,7 @@ type File struct {
 type Package struct { Directory string; TypeErrors []string; Files []File }
 
 const chiPath = "github.com/go-chi/chi/v5"
+const identityPath = "github.com/gofromzero/ttsync/internal/identity"
 const chiStub = "package chi\n" +
   "import \"net/http\"\n" +
   "type Router interface {\n" +
@@ -82,7 +83,19 @@ const chiStub = "package chi\n" +
   "}\n" +
   "func NewRouter() Router { return nil }\n"
 
-type allowedImporter struct { standard types.Importer; chi *types.Package }
+const identityStub = "package identity\n" +
+  "import (\"errors\"; \"time\")\n" +
+  "var ErrInvalidEmail = errors.New(\"invalid email\")\n" +
+  "var ErrInvalidPassword = errors.New(\"invalid password\")\n" +
+  "var ErrInvalidToken = errors.New(\"invalid token\")\n" +
+  "var ErrRateLimited = errors.New(\"rate limited\")\n" +
+  "type RegisterCommand struct { Email, Password, IP, RequestID string; RequestTime time.Time }\n" +
+  "type ResendVerificationCommand struct { Email, IP, RequestID string; RequestTime time.Time }\n" +
+  "type VerifyEmailCommand struct { Token, IP, RequestID string; RequestTime time.Time }\n" +
+  "type AcceptedResult struct{ Accepted bool }\n" +
+  "type VerifiedResult struct{ Verified bool }\n"
+
+type allowedImporter struct { standard types.Importer; chi *types.Package; identity *types.Package }
 
 func newAllowedImporter() *allowedImporter {
   standard := importer.Default()
@@ -92,11 +105,16 @@ func newAllowedImporter() *allowedImporter {
   configuration := types.Config{Importer: standard}
   chi, error := configuration.Check(chiPath, fileSet, []*ast.File{file}, nil)
   if error != nil { panic(error) }
-  return &allowedImporter{standard: standard, chi: chi}
+  identityFile, error := parser.ParseFile(fileSet, "identity.go", identityStub, 0)
+  if error != nil { panic(error) }
+  identity, error := configuration.Check(identityPath, fileSet, []*ast.File{identityFile}, nil)
+  if error != nil { panic(error) }
+  return &allowedImporter{standard: standard, chi: chi, identity: identity}
 }
 
 func (value *allowedImporter) Import(path string) (*types.Package, error) {
   if path == chiPath { return value.chi, nil }
+  if path == identityPath { return value.identity, nil }
   return value.standard.Import(path)
 }
 
@@ -154,6 +172,8 @@ func callObject(info *types.Info, expression ast.Expr) (types.Object, string) {
     return callObject(info, value.X)
   case *ast.IndexListExpr:
     return callObject(info, value.X)
+  case *ast.ArrayType:
+    return nil, "<slice-conversion>"
   default:
     return nil, "<expression>"
   }
@@ -484,13 +504,25 @@ function assertHttpapiAllowedSurface(inspection) {
   );
   const allowedImports = new Set([
     'context',
+    'crypto/rand',
+    'crypto/subtle',
     'embed',
+    'encoding/base64',
+    'encoding/hex',
     'encoding/json',
+    'errors',
+    'fmt',
+    'io',
     'io/fs',
+    'mime',
+    'net',
     'net/http',
+    'net/url',
     'path',
     'strings',
+    'time',
     'github.com/go-chi/chi/v5',
+    'github.com/gofromzero/ttsync/internal/identity',
   ]);
   const configFiles = files.filter((file) => file.ConfigFields.length > 0);
   assert.equal(configFiles.length, 1, 'HTTP adapter 必须只定义一个 Config 协作者面');
@@ -499,15 +531,19 @@ function assertHttpapiAllowedSurface(inspection) {
     [
       { Name: 'Ready', Type: 'func(context.Context) error', Tag: '' },
       { Name: 'Web', Type: 'fs.FS', Tag: '' },
+      { Name: 'PublicOrigin', Type: 'string', Tag: '' },
+      { Name: 'Register', Type: 'func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error)', Tag: '' },
+      { Name: 'ResendVerification', Type: 'func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error)', Tag: '' },
+      { Name: 'VerifyEmail', Type: 'func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error)', Tag: '' },
     ],
-    'Config 必须精确为 Ready func(context.Context) error 与 Web fs.FS',
+    'Config 必须精确为 Ready、Web、PublicOrigin 与三个 identity 方法值',
   );
 
   for (const file of files) {
     for (const imported of file.Imports) {
       assert.notEqual(imported.Name, '.', `internal/httpapi 不得使用 dot import：${imported.Path}`);
       assert.ok(imported.Name === '' || (imported.Name === '_' && imported.Path === 'embed'), `internal/httpapi 不得改名或旁路 import：${imported.Name} ${imported.Path}`);
-      assert.ok(!imported.Path.includes('/internal/'), `internal/httpapi 不得导入任意 internal 包：${imported.Path}`);
+      assert.ok(!imported.Path.includes('/internal/') || imported.Path === 'github.com/gofromzero/ttsync/internal/identity', `internal/httpapi 只可导入 identity internal 包：${imported.Path}`);
       assert.ok(allowedImports.has(imported.Path), `internal/httpapi 依赖不在允许面：${imported.Path}`);
     }
   }
@@ -559,6 +595,7 @@ function assertHttpapiAllowedSurface(inspection) {
 
   const registrations = routerFile.Calls.filter((call) => call.Package === 'github.com/go-chi/chi/v5' && routeMethods.has(call.Name));
   const allowedHealthPaths = new Set(['/health/live', '/health/ready']);
+  const allowedIdentityPaths = new Set(['/api/v1/accounts', '/api/v1/accounts/verification/resend', '/api/v1/accounts/verification']);
   const allowedFallbackPaths = new Set(['/', '/*']);
   assert.ok(registrations.some((call) => call.Name === 'Get' && call.Arguments[0]?.Kind === 'string' && call.Arguments[0].Value === '/health/live'), '必须注册 /health/live');
   assert.ok(registrations.some((call) => call.Name === 'Get' && call.Arguments[0]?.Kind === 'string' && call.Arguments[0].Value === '/health/ready'), '必须注册 /health/ready');
@@ -581,8 +618,9 @@ function assertHttpapiAllowedSurface(inspection) {
     }
     assert.equal(path?.Kind, 'string', `路由路径必须是字面量：${call.Receiver}.${call.Name}`);
     const isHealthRead = call.Name === 'Get' && allowedHealthPaths.has(path.Value);
+    const isIdentityWrite = call.Name === 'Post' && allowedIdentityPaths.has(path.Value);
     const isSpaFallback = ['Get', 'Handle', 'HandleFunc'].includes(call.Name) && allowedFallbackPaths.has(path.Value);
-    assert.ok(isHealthRead || isSpaFallback, `B-01 不得注册领域路由、写路由或中间件：${call.Receiver}.${call.Name} ${path.Value}`);
+    assert.ok(isHealthRead || isIdentityWrite || isSpaFallback, `HTTP adapter 不得注册未授权领域路由、写路由或中间件：${call.Receiver}.${call.Name} ${path.Value}`);
     assert.equal(call.Arguments.length, 2, `${path.Value} 必须只接收路径与 handler`);
     assertInlineHTTPHandler(call.Arguments[1], `${path.Value} handler`);
   }
@@ -592,15 +630,21 @@ function assertHttpapiAllowedSurface(inspection) {
   );
 
   assert.ok(routerFile.Calls.some((call) => call.Function === 'New' && call.Receiver === configName && call.Name === 'Ready' && call.ObjectKind === 'var'), 'readiness 必须调用 Config.Ready');
+  for (const method of ['Register', 'ResendVerification', 'VerifyEmail']) {
+    assert.ok(routerFile.Calls.some((call) => call.Function === 'New' && call.Receiver === configName && call.Name === method && call.ObjectKind === 'var'), `HTTP adapter 必须调用 Config.${method}`);
+  }
   assert.ok(routerFile.Selectors.some((selector) => selector.Function === 'New' && selector.Receiver === configName && selector.Name === 'Web' && selector.ObjectKind === 'var'), 'SPA 必须消费 Config.Web');
 
-  const allowedStandardCallPackages = new Set(['encoding/json', 'io/fs', 'net/http', 'path', 'strings']);
+  const allowedStandardCallPackages = new Set(['crypto/rand', 'crypto/subtle', 'encoding/base64', 'encoding/hex', 'encoding/json', 'errors', 'fmt', 'io', 'io/fs', 'mime', 'net', 'net/http', 'net/url', 'path', 'strings', 'time']);
+  const allowedLocalAdapterCalls = new Set(['newRequestID', 'writeProblem', 'writeValidation', 'mapError', 'decodeJSON', 'authorize', 'requestIP', 'issueCSRF']);
   for (const call of routerFile.Calls.filter((candidate) => candidate.Function === 'New')) {
     const isChi = call.Package === 'github.com/go-chi/chi/v5';
     const isStandard = allowedStandardCallPackages.has(call.Package);
-    const isReady = call.Receiver === configName && call.Name === 'Ready' && call.ObjectKind === 'var';
+    const isConfigMethod = call.Receiver === configName && ['Ready', 'Register', 'ResendVerification', 'VerifyEmail'].includes(call.Name) && call.ObjectKind === 'var';
     const isBuiltin = call.Package === '' && call.ObjectKind === 'builtin' && ['append', 'len', 'make'].includes(call.Name);
-    assert.ok(isChi || isStandard || isReady || isBuiltin, `router.go New 调用不在允许面：${call.Receiver ? `${call.Receiver}.` : ''}${call.Name}`);
+    const isLocalAdapter = call.Receiver === '' && call.ObjectKind === 'var' && allowedLocalAdapterCalls.has(call.Name);
+    const isSliceConversion = call.Package === '' && call.ObjectKind === 'unknown' && call.Name === '<slice-conversion>';
+    assert.ok(isChi || isStandard || isConfigMethod || isBuiltin || isLocalAdapter || isSliceConversion, `router.go New 调用不在允许面：${call.Receiver ? `${call.Receiver}.` : ''}${call.Name} ${JSON.stringify(call)}`);
   }
 
   const webSource = readFileSync(webFile.Path, 'utf8');
@@ -634,6 +678,61 @@ function assertHttpapiAllowedSurface(inspection) {
     assert.ok(isSub || isPanic, `web.go 调用不在静态资产允许面：${call.Receiver ? `${call.Receiver}.` : ''}${call.Name}`);
   }
 }
+
+test('ID-01 HTTP adapter 允许三个固定 POST 与 identity 方法值', () => {
+  const fixtureDirectory = mkdtempSync(join(tmpdir(), 'ttsync-id01-http-fixture-'));
+  try {
+    const router = `package httpapi
+
+import (
+  "context"
+  "io/fs"
+  "net/http"
+
+  "github.com/go-chi/chi/v5"
+  "github.com/gofromzero/ttsync/internal/identity"
+)
+
+type Config struct {
+  Ready func(context.Context) error
+  Web fs.FS
+  PublicOrigin string
+  Register func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error)
+  ResendVerification func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error)
+  VerifyEmail func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error)
+}
+
+func New(config Config) http.Handler {
+  router := chi.NewRouter()
+  router.Get("/health/live", func(http.ResponseWriter, *http.Request) {})
+  router.Get("/health/ready", func(writer http.ResponseWriter, request *http.Request) {
+    if config.Ready(request.Context()) != nil { writer.WriteHeader(http.StatusServiceUnavailable) }
+  })
+  router.Post("/api/v1/accounts", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.Register(request.Context(), identity.RegisterCommand{}) })
+  router.Post("/api/v1/accounts/verification/resend", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.ResendVerification(request.Context(), identity.ResendVerificationCommand{}) })
+  router.Post("/api/v1/accounts/verification", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.VerifyEmail(request.Context(), identity.VerifyEmailCommand{}) })
+  router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
+    http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
+  })
+  return router
+}`;
+    const web = `package httpapi
+
+import (
+  "embed"
+  "io/fs"
+)
+
+//go:embed web/dist/*
+var embeddedWeb embed.FS
+
+func WebAssets() fs.FS { return embeddedWeb }
+`;
+    assert.doesNotThrow(() => assertHttpapiAllowedSurface(inspectGoFiles(writeGoPackageFixture(fixtureDirectory, '合法 ID-01 HTTP adapter', { 'router.go': router, 'web.go': web }))));
+  } finally {
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  }
+});
 
 function nodesUnder(root) {
   const nodes = [];
@@ -900,11 +999,16 @@ import (
   "net/http"
 
   "github.com/go-chi/chi/v5"
+  "github.com/gofromzero/ttsync/internal/identity"
 )
 
 type Config struct {
   Ready func(context.Context) error
   Web fs.FS
+  PublicOrigin string
+  Register func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error)
+  ResendVerification func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error)
+  VerifyEmail func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error)
 }
 
 func New(config Config) http.Handler {
@@ -915,6 +1019,9 @@ func New(config Config) http.Handler {
       writer.WriteHeader(http.StatusServiceUnavailable)
     }
   })
+  router.Post("/api/v1/accounts", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.Register(request.Context(), identity.RegisterCommand{}) })
+  router.Post("/api/v1/accounts/verification/resend", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.ResendVerification(request.Context(), identity.ResendVerificationCommand{}) })
+  router.Post("/api/v1/accounts/verification", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.VerifyEmail(request.Context(), identity.VerifyEmailCommand{}) })
   router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
     http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
   })
@@ -989,11 +1096,16 @@ import (
   "net/http"
 
   "github.com/go-chi/chi/v5"
+  "github.com/gofromzero/ttsync/internal/identity"
 )
 
 type Config struct {
   Ready func(context.Context) error
   Web fs.FS
+  PublicOrigin string
+  Register func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error)
+  ResendVerification func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error)
+  VerifyEmail func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error)
 }
 
 func New(config Config) http.Handler {
@@ -1004,6 +1116,9 @@ func New(config Config) http.Handler {
       writer.WriteHeader(http.StatusServiceUnavailable)
     }
   })
+  router.Post("/api/v1/accounts", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.Register(request.Context(), identity.RegisterCommand{}) })
+  router.Post("/api/v1/accounts/verification/resend", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.ResendVerification(request.Context(), identity.ResendVerificationCommand{}) })
+  router.Post("/api/v1/accounts/verification", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.VerifyEmail(request.Context(), identity.VerifyEmailCommand{}) })
   router.NotFound(func(writer http.ResponseWriter, request *http.Request) {
     http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request)
   })
