@@ -11,7 +11,7 @@
 - `identity.Module` 是具体类型，不增加单实现 Go interface、repository 或通用 UoW。
 - Module 直接使用 `pgxpool`；事务、唯一性、令牌和审计规则留在 Module 内。
 - 标准库负责邮箱 trim/lower、Unicode 可打印检查、CSPRNG、SHA-256、SMTP 和测试 outbox；密码哈希复用已安装的 `x/crypto/argon2`。
-- 邮件以一个函数参数作为内部 seam：生产用 SMTP，测试用写入容器临时目录的 outbox；不增加服务或公开 outbox endpoint。
+- 邮件以一个函数参数作为内部 seam：生产用 SMTP，测试用写入容器临时目录的 outbox；不增加服务或公开 outbox endpoint。对照 #19，投递可用时正常业务分支均受理；每个未限速的 Register/Resend 路径都调用同一邮件 seam，新建/待验证使用真实令牌，无令牌分支使用通用无链接回执；SMTP 失败统一为可重试依赖错误，绝不验证账号。
 - 单机限速用进程内 mutex + map；`# ponytail:` 注明多实例时再换共享存储。
 - Vue 继续使用现有 `App.vue`，不增加路由、状态库或表单依赖。
 
@@ -34,10 +34,10 @@
 
 **修改：** `db/migrations/000002_identity_registration.sql`、`db/queries/identity/`、`db/sqlc.yaml`、`internal/identity/`。
 
-- [ ] RED（纯 Go）：邮箱展示/唯一键、Unicode 密码边界、泄露密码、令牌摘要/期限、限速桶。
-- [ ] RED（真实 PostgreSQL）：并发同邮箱只留一账号；重发新代废旧代；过期/重放/用途错/并发消费不改变状态；安全事件不含密码、完整令牌或摘要。
-- [ ] GREEN：三张表足够——`accounts`、`verification_tokens`、`identity_security_events`；增加一组 identity sqlc 查询和具体 `identity.Module`。
-- [ ] 验证：定向 unit/integration、`npm run db:generate`、`npm run test:go`；中文提交。
+- [x] RED（纯 Go）：邮箱展示/唯一键、Unicode 密码边界、泄露密码、令牌摘要/期限、限速桶。
+- [x] RED（真实 PostgreSQL）：并发同邮箱只留一账号；重发新代废旧代；过期/重放/用途错/并发消费不改变状态；安全事件不含密码、完整令牌或摘要。
+- [x] GREEN：三张表足够——`accounts`、`verification_tokens`、`identity_security_events`；增加一组 identity sqlc 查询和具体 `identity.Module`。
+- [x] 验证：定向 unit/integration、`npm run db:generate`、`npm run test:go`；中文提交。
 
 ## Slice 3 — HTTP + CSRF + 邮件
 

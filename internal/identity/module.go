@@ -246,23 +246,16 @@ func (m *Module) VerifyEmail(ctx context.Context, command VerifyEmailCommand) (V
 	return VerifiedResult{Verified: true}, nil
 }
 
-func (m *Module) limiter() *limiter {
-	if m.limits != nil {
-		return m.limits
-	}
-	return &packageLimiter
-}
-
 func (m *Module) identityRateLimited(target, ip string, now time.Time) bool {
-	targetAllowed := m.limiter().allow("identity:target:"+target, now, 1, 5)
-	ipAllowed := m.limiter().allow("identity:ip:"+ip, now, 20, 20)
+	targetAllowed := m.limits.allow("identity:target:"+target, now, 1, 5)
+	ipAllowed := m.limits.allow("identity:ip:"+ip, now, 20, 20)
 	return !targetAllowed || !ipAllowed
 }
 
 func (m *Module) verificationRateLimited(rawToken, ip string, now time.Time) bool {
 	target := sha256.Sum256([]byte(rawToken))
-	targetAllowed := m.limiter().allow("verification:target:"+string(target[:]), now, 1, 5)
-	ipAllowed := m.limiter().allow("verification:ip:"+ip, now, 30, 30)
+	targetAllowed := m.limits.allow("verification:target:"+string(target[:]), now, 1, 5)
+	ipAllowed := m.limits.allow("verification:ip:"+ip, now, 30, 30)
 	return !targetAllowed || !ipAllowed
 }
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/argon2"
 )
 
 func TestNormalizeEmailPreservesTrimmedDisplayAndBuildsLowercaseKey(t *testing.T) {
@@ -120,21 +122,29 @@ func TestValidatePasswordUsesPrintableUnicodeRuneBoundsWithoutNormalization(t *t
 	}
 }
 
-func TestHashPasswordProducesVerifiableArgon2idEncoding(t *testing.T) {
+func TestHashPasswordProducesSelfDescribingArgon2idEncoding(t *testing.T) {
 	salt := bytes.Repeat([]byte{0x5a}, 16)
 	random := func(dst []byte) (int, error) { return copy(dst, salt), nil }
-	encoded, err := hashPassword("0123456789abcde", random)
+	password := "0123456789abcde"
+	encoded, err := hashPassword(password, random)
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
-	if !strings.HasPrefix(encoded, "$argon2id$v=19$m=19456,t=2,p=1$") {
-		t.Fatalf("encoded hash parameters = %q", encoded)
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" || parts[3] != "m=19456,t=2,p=1" {
+		t.Fatalf("encoded hash = %q", encoded)
 	}
-	if !verifyPassword("0123456789abcde", encoded) {
-		t.Fatal("encoded hash did not verify")
+	decodedSalt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil || len(decodedSalt) != argonSaltLength || !bytes.Equal(decodedSalt, salt) {
+		t.Fatalf("decoded salt = %x, error = %v", decodedSalt, err)
 	}
-	if verifyPassword("different-password", encoded) {
-		t.Fatal("different password verified")
+	decodedKey, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil || len(decodedKey) != argonKeyLength {
+		t.Fatalf("decoded key length = %d, error = %v", len(decodedKey), err)
+	}
+	want := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLength)
+	if !bytes.Equal(decodedKey, want) {
+		t.Fatalf("decoded key = %x, want %x", decodedKey, want)
 	}
 }
 

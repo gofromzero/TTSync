@@ -2,12 +2,10 @@ package identity
 
 import (
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/mail"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -124,46 +122,4 @@ func hashPassword(password string, random func([]byte) (int, error)) (string, er
 	key := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLength)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, argonMemory, argonIterations, argonParallelism,
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
-}
-
-func verifyPassword(password, encoded string) bool {
-	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {
-		return false
-	}
-	var memory uint64
-	var iterations, parallelism uint64
-	for _, setting := range strings.Split(parts[3], ",") {
-		name, value, found := strings.Cut(setting, "=")
-		if !found {
-			return false
-		}
-		parsed, err := strconv.ParseUint(value, 10, 32)
-		if err != nil {
-			return false
-		}
-		switch name {
-		case "m":
-			memory = parsed
-		case "t":
-			iterations = parsed
-		case "p":
-			parallelism = parsed
-		default:
-			return false
-		}
-	}
-	if memory != argonMemory || iterations != argonIterations || parallelism != argonParallelism {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil || len(salt) != argonSaltLength {
-		return false
-	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil || len(want) != argonKeyLength {
-		return false
-	}
-	got := argon2.IDKey([]byte(password), salt, uint32(iterations), uint32(memory), uint8(parallelism), uint32(len(want)))
-	return subtle.ConstantTimeCompare(got, want) == 1
 }
