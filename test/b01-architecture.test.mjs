@@ -533,6 +533,10 @@ function assertClientAllowedSurface(sources) {
 
     const postCalls = nodesUnder(scriptFile).filter((node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'post');
     assert.equal(postCalls.length, 3, 'ID-01 App.vue 必须恰好调用三个固定 POST');
+    const allowedPostReferences = new Set([postFunction.name, ...postCalls.map((call) => call.expression)]);
+    const postReferences = nodesUnder(scriptFile).filter((node) => ts.isIdentifier(node) && node.text === 'post');
+    assert.equal(postReferences.length, 4, 'ID-01 App.vue post helper 不得被别名、bind、属性、传递、返回或包装引用');
+    assert.ok(postReferences.every((reference) => allowedPostReferences.has(reference)), 'ID-01 App.vue post helper 只允许声明名与三个直接调用 callee');
     const requestFields = new Map([
       ['/api/v1/accounts', ['email', 'password']],
       ['/api/v1/accounts/verification/resend', ['email']],
@@ -1315,9 +1319,10 @@ function assertId01BrowserSmokeAllowedSurface(source) {
       && ts.isArrayLiteralExpression(call.arguments[1])
       && call.arguments[1].elements.length === 0);
     assert.ok(assertion, `ID-01 browser smoke 必须在全部导航后断言 ${collector} 为零`);
+    return assertion;
   };
-  finalDeepEqual(requestCollector.collector);
-  finalDeepEqual(consoleCollector.collector);
+  const finalRequestAssertion = finalDeepEqual(requestCollector.collector);
+  const finalConsoleAssertion = finalDeepEqual(consoleCollector.collector);
   assert.equal(responseCollector.collector, 'apiResponses', 'ID-01 response listener 必须采集真实 POST 响应');
 
   const composeAppShell = nodesUnder(sourceFile).find((node) => ts.isCallExpression(node)
@@ -1370,18 +1375,8 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     assert.equal(matches.length, 1, `ID-01 browser smoke 必须恰好提供 ${label}`);
     const [call] = matches;
     assert.ok(ts.isExpressionStatement(call.parent) && unwrappedExpression(call.parent.expression) === call, `${label} 必须是直接执行的断言语句`);
-    let topLevelStatement = call.parent;
-    while (topLevelStatement.parent !== tryStatement.tryBlock) {
-      topLevelStatement = topLevelStatement.parent;
-      assert.ok(topLevelStatement
-        && !ts.isIfStatement(topLevelStatement)
-        && !ts.isSwitchStatement(topLevelStatement)
-        && !ts.isConditionalExpression(topLevelStatement)
-        && !ts.isFunctionDeclaration(topLevelStatement)
-        && !ts.isFunctionExpression(topLevelStatement)
-        && !ts.isArrowFunction(topLevelStatement), `${label} 不得藏在任意条件分支或函数中`);
-    }
-    return { call, position: tryStatement.tryBlock.statements.indexOf(topLevelStatement) };
+    assert.ok(call.parent.parent === tryStatement.tryBlock, `${label} 必须是 browser try block statement list 的直接表达式，不得藏在 catch、条件、循环或函数中`);
+    return { call, position: tryStatement.tryBlock.statements.indexOf(call.parent) };
   };
   const afterBinding = (assertion, bindingName, label) => {
     const position = bindingPosition(bindingName);
@@ -1397,10 +1392,53 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     && ts.isStringLiteralLike(args[1])
     && args[1].text === '700', 'outbox 700 断言');
   afterBinding(outboxModeAssertion, 'firstOutbox', 'outbox 700 断言');
-  const appLogSecretAssertion = criticalAssertion('ok', (args) => ts.isPrefixUnaryExpression(args[0])
+  const passwordLogAssertion = criticalAssertion('ok', (args) => ts.isPrefixUnaryExpression(args[0])
     && args[0].operator === ts.SyntaxKind.ExclamationToken
-    && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'secret', 'app 日志秘密断言');
-  afterBinding(appLogSecretAssertion, 'appLogs', 'app 日志秘密断言');
+    && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'password', 'app 日志密码断言');
+  afterBinding(passwordLogAssertion, 'appLogs', 'app 日志密码断言');
+  const tokenLogAssertion = criticalAssertion('ok', (args) => ts.isPrefixUnaryExpression(args[0])
+    && args[0].operator === ts.SyntaxKind.ExclamationToken
+    && propertyCall(args[0].operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === 'token', 'app 日志 token 断言');
+  afterBinding(tokenLogAssertion, 'appLogs', 'app 日志 token 断言');
+  const cookiesBinding = bindings.get('cookies');
+  assert.ok(propertyCall(cookiesBinding, contextName, 'cookies'), 'ID-01 browser smoke 必须从真实 context 获取 cookies');
+  afterBinding(passwordLogAssertion, 'cookies', 'app 日志密码断言');
+  afterBinding(tokenLogAssertion, 'cookies', 'app 日志 token 断言');
+  const csrfCookieBinding = bindings.get('csrfCookie');
+  const csrfFind = propertyCall(csrfCookieBinding, 'cookies', 'find');
+  const csrfFindCallback = csrfFind?.arguments[0];
+  assert.ok(csrfFindCallback
+    && ts.isArrowFunction(csrfFindCallback)
+    && ts.isIdentifier(csrfFindCallback.parameters[0]?.name)
+    && ts.isBinaryExpression(csrfFindCallback.body)
+    && csrfFindCallback.body.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+    && csrfFindCallback.body.left.getText(sourceFile) === `${csrfFindCallback.parameters[0].name.text}.name`
+    && ts.isStringLiteralLike(csrfFindCallback.body.right)
+    && csrfFindCallback.body.right.text === '__Host-ttsync-csrf', 'ID-01 browser smoke 必须按精确名称查找 CSRF cookie');
+  const csrfCookieAssertion = criticalAssertion('ok', (args) => args[0]?.getText(sourceFile) === 'csrfCookie?.value', '命名 CSRF cookie 非空断言');
+  afterBinding(csrfCookieAssertion, 'appLogs', '命名 CSRF cookie 非空断言');
+  afterBinding(csrfCookieAssertion, 'cookies', '命名 CSRF cookie 非空断言');
+  afterBinding(csrfCookieAssertion, 'csrfCookie', '命名 CSRF cookie 非空断言');
+  const cookiesEveryAssertion = (predicate, label) => criticalAssertion('ok', (args) => {
+    const every = propertyCall(args[0], 'cookies', 'every');
+    const everyCallback = every?.arguments[0];
+    return everyCallback
+      && ts.isArrowFunction(everyCallback)
+      && ts.isIdentifier(everyCallback.parameters[0]?.name)
+      && predicate(everyCallback.body, everyCallback.parameters[0].name.text);
+  }, label);
+  const cookieValuesNonempty = cookiesEveryAssertion((body, cookieName) => ts.isBinaryExpression(body)
+    && body.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
+    && body.left.getText(sourceFile) === `${cookieName}.value.length`
+    && ts.isNumericLiteral(body.right)
+    && body.right.text === '0', '全部 cookie 值非空断言');
+  afterBinding(cookieValuesNonempty, 'cookies', '全部 cookie 值非空断言');
+  afterBinding(cookieValuesNonempty, 'appLogs', '全部 cookie 值非空断言');
+  const cookieValuesAbsent = cookiesEveryAssertion((body, cookieName) => ts.isPrefixUnaryExpression(body)
+    && body.operator === ts.SyntaxKind.ExclamationToken
+    && propertyCall(body.operand, 'appLogs', 'includes')?.arguments[0]?.getText(sourceFile) === `${cookieName}.value`, '全部 cookie 值日志排除断言');
+  afterBinding(cookieValuesAbsent, 'appLogs', '全部 cookie 值日志排除断言');
+  afterBinding(cookieValuesAbsent, 'cookies', '全部 cookie 值日志排除断言');
 
   const expectedReplayConsoleError = bindings.get('expectedReplayConsoleError');
   assert.ok(expectedReplayConsoleError && ts.isObjectLiteralExpression(expectedReplayConsoleError), 'ID-01 browser smoke 必须构造绑定重放响应的精确 console 诊断');
@@ -1437,6 +1475,13 @@ function assertId01BrowserSmokeAllowedSurface(source) {
     && args[1].elements.length === 1
     && args[1].elements[0].getText(sourceFile) === 'expectedReplayConsoleError', '重放 console 精确消费断言');
   afterBinding(replayConsoleRemoval, 'replayConsoleErrorIndex', '重放 console 精确消费断言');
+
+  const finalEvidenceAssertion = finalRequestAssertion.index > finalConsoleAssertion.index ? finalRequestAssertion : finalConsoleAssertion;
+  const earlyTermination = nodesUnder(tryStatement.tryBlock).find((node) => node.getStart(sourceFile) < finalEvidenceAssertion.call.getStart(sourceFile)
+    && (ts.isReturnStatement(node)
+      || ts.isThrowStatement(node)
+      || (ts.isCallExpression(node) && node.expression.getText(sourceFile) === 'process.exit')));
+  assert.ok(!earlyTermination, 'ID-01 browser smoke 不得在最终证据序列前 return、throw 或 process.exit');
 
   const tryText = tryStatement.tryBlock.getText(sourceFile);
   for (const required of [
@@ -1691,6 +1736,12 @@ await browser.close();`;
 test('ID-01 browser smoke 使用独立的完整纵向验收允许面', () => {
   const id01Smoke = readFileSync(requireFile('test/id01-browser-smoke.mjs'), 'utf8');
   assert.doesNotThrow(() => assertId01BrowserSmokeAllowedSurface(id01Smoke));
+  const directSecretEvidence = `    assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');
+    assert.ok(!appLogs.includes(token), 'app 日志不得包含完整验证 token');
+    const csrfCookie = cookies.find((cookie) => cookie.name === '__Host-ttsync-csrf');
+    assert.ok(csrfCookie?.value, '必须捕获非空的命名 CSRF cookie');
+    assert.ok(cookies.every((cookie) => cookie.value.length > 0), '所有捕获的 cookie 值必须非空');
+    assert.ok(cookies.every((cookie) => !appLogs.includes(cookie.value)), 'app 日志不得包含任何捕获的 cookie 值');`;
   for (const [name, source, expectedMessage] of [
     ['伪装 PASS 而非显式 skip', id01Smoke.replace("skip: process.env.B01_RUN_BROWSER_SMOKE !== '1'", 'skip: false')],
     ['非 HTTPS 首屏', id01Smoke.replace("'https://localhost:8443'", "'http://localhost:8443'")],
@@ -1703,16 +1754,20 @@ test('ID-01 browser smoke 使用独立的完整纵向验收允许面', () => {
     ['缺首次注册 200', id01Smoke.replace('assert.equal((await firstRegisterResponse).status(), 200);', 'assert.equal((await firstRegisterResponse).status(), 201);')],
     ['缺验证 200', id01Smoke.replace('assert.equal((await verifyResponse).status(), 200);', 'assert.equal((await verifyResponse).status(), 201);')],
     ['即时 429 冒充重放', id01Smoke.replace('assert.equal(replay.status(), 422);', 'assert.equal(replay.status(), 429);')],
-    ['重放 422 断言藏在环境分支', id01Smoke.replace('assert.equal(replay.status(), 422);', 'if (process.env.NEVER_SET) assert.equal(replay.status(), 422);'), /重放 422 断言\s+不得藏在任意条件分支或函数中/],
+    ['重放 422 断言藏在环境分支', id01Smoke.replace('assert.equal(replay.status(), 422);', 'if (process.env.NEVER_SET) assert.equal(replay.status(), 422);'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放 422 断言藏在 catch', id01Smoke.replace('assert.equal(replay.status(), 422);', 'try { throw new Error(); } catch { assert.equal(replay.status(), 422); }'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放 422 断言藏在空数组循环', id01Smoke.replace('assert.equal(replay.status(), 422);', 'for (const ignored of []) { assert.equal(replay.status(), 422); }'), /重放 422 断言 必须是 browser try block statement list 的直接表达式/],
+    ['重放响应后提前 return', id01Smoke.replace('const replay = await replayResponse;', 'const replay = await replayResponse;\n    return;'), /不得在最终证据序列前 return、throw 或 process\.exit/],
     ['错误 body code', id01Smoke.replace("'VALIDATION_FAILED'", "'RATE_LIMITED'")],
     ['缺重复注册 200', id01Smoke.replace('assert.equal((await duplicateResponse).status(), 200);', 'assert.equal((await duplicateResponse).status(), 201);')],
     ['等待窗口不足', id01Smoke.replace('61_000', '1_000')],
-    ['outbox 700 断言藏在环境分支', id01Smoke.replace("assert.equal(firstOutbox.directoryMode, '700');", "if (process.env.NEVER_SET) assert.equal(firstOutbox.directoryMode, '700');"), /outbox 700 断言\s+不得藏在任意条件分支或函数中/],
+    ['outbox 700 断言藏在环境分支', id01Smoke.replace("assert.equal(firstOutbox.directoryMode, '700');", "if (process.env.NEVER_SET) assert.equal(firstOutbox.directoryMode, '700');"), /outbox 700 断言 必须是 browser try block statement list 的直接表达式/],
     ['吞掉预期 422 浏览器诊断', id01Smoke.replace("assert.notEqual(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');", "assert.equal(replayConsoleErrorIndex, -1, '必须采集绑定到重放响应 URL 的 Chromium 422 诊断');")],
     ['预期 422 控制台诊断带额外后缀', id01Smoke.replace('the server responded with a status of ${replay.status()} ()`', 'the server responded with a status of ${replay.status()} () extra`'), /预期 console 文本必须精确使用重放响应 status/],
     ['日志来自非 app 服务', id01Smoke.replace("'logs', '--no-color', 'app'", "'logs', '--no-color', 'postgres'")],
-    ['日志断言不可达 decoy', id01Smoke.replace("assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');", "if (false) assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');")],
-    ['日志秘密断言藏在环境分支', id01Smoke.replace("assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');", "if (process.env.NEVER_SET) assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');"), /app 日志秘密断言\s+不得藏在任意条件分支或函数中/],
+    ['日志断言不可达 decoy', id01Smoke.replace("assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');", "if (false) assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');")],
+    ['日志秘密断言藏在环境分支', id01Smoke.replace("assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');", "if (process.env.NEVER_SET) assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');"), /app 日志密码断言 必须是 browser try block statement list 的直接表达式/],
+    ['日志秘密 iterable 为空', id01Smoke.replace(directSecretEvidence, "    for (const secret of []) {\n      assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');\n    }"), /必须恰好提供 app 日志密码断言/],
     ['最终外联断言不可达 decoy', id01Smoke.replace('assert.deepEqual(externalRequests, []);', 'if (false) assert.deepEqual(externalRequests, []);')],
     ['缺 finally close', id01Smoke.replace('await browser.close();', 'void browser;')],
   ]) {
@@ -1799,6 +1854,8 @@ onMounted(async () => {
     ['fetch 别名调用', id01Sources['App.vue'].replace('async function register()', "const f = fetch;\nf('/api/v1/teams');\nasync function register()"), /原生 fetch 不得被别名/],
     ['fetch.bind 别名调用', id01Sources['App.vue'].replace('async function register()', "const f = fetch.bind(null);\nf('/api/v1/teams');\nasync function register()"), /原生 fetch 不得被别名/],
     ['fetch 别名动态绝对 URL', id01Sources['App.vue'].replace('async function register()', "const f = fetch;\nconst target = 'https:' + '/' + '/example.invalid/api';\nf(target);\nasync function register()"), /原生 fetch 不得被别名/],
+    ['post helper 别名调用', id01Sources['App.vue'].replace('async function register()', "const extraPost = post;\nextraPost('/api/v1/teams' as any, {});\nasync function register()"), /post helper 不得被别名/],
+    ['post helper bind 调用', id01Sources['App.vue'].replace('async function register()', "const extraPost = post.bind(null);\nextraPost('/api/v1/teams' as any, {});\nasync function register()"), /post helper 不得被别名/],
     ['非 POST', id01Sources['App.vue'].replace("method: 'POST'", "method: 'GET'")],
     ['非 same-origin credentials', id01Sources['App.vue'].replace("credentials: 'same-origin'", "credentials: 'include'")],
     ['CSRF header 非 cookie 值', id01Sources['App.vue'].replace("'X-CSRF-Token': csrf()", "'X-CSRF-Token': ''")],

@@ -133,9 +133,12 @@ done`);
       'compose', '-p', composeProject, '-f', composeFile, 'logs', '--no-color', 'app',
     ], { encoding: 'utf8', windowsHide: true });
     const cookies = await context.cookies();
-    for (const secret of [password, token, ...cookies.map((cookie) => cookie.value)].filter(Boolean)) {
-      assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');
-    }
+    assert.ok(!appLogs.includes(password), 'app 日志不得包含测试密码');
+    assert.ok(!appLogs.includes(token), 'app 日志不得包含完整验证 token');
+    const csrfCookie = cookies.find((cookie) => cookie.name === '__Host-ttsync-csrf');
+    assert.ok(csrfCookie?.value, '必须捕获非空的命名 CSRF cookie');
+    assert.ok(cookies.every((cookie) => cookie.value.length > 0), '所有捕获的 cookie 值必须非空');
+    assert.ok(cookies.every((cookie) => !appLogs.includes(cookie.value)), 'app 日志不得包含任何捕获的 cookie 值');
     assert.deepEqual(apiResponses, [
       ['/api/v1/accounts', 200],
       ['/api/v1/accounts/verification', 200],
