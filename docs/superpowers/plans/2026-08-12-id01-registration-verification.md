@@ -20,7 +20,7 @@
 - 邮箱：trim 后保留展示写法，整体小写作为 PostgreSQL 唯一键。
 - 密码：原样处理；15–128 个可打印 Unicode code point；拒绝包内固定泄露密码集合。
 - 令牌：`crypto/rand` 生成，24 小时，按用途和 generation 单次消费；数据库只存 SHA-256。
-- 注册与重发始终返回 `{accepted:true}`；无效、过期、重放、旧代和用途错误统一返回同一个 422。
+- 未触发限速时，注册与重发始终返回 `{accepted:true}`；所有目标/IP 限速统一为不暴露桶类型的 429；无效、过期、重放、旧代和用途错误统一为同一个 422。
 - anonymous CSRF：首屏设置 Secure/SameSite 同源 cookie，客户端回送 `X-CSRF-Token`；不增加 token API。
 - 注册事务先提交 pending 账号、令牌和安全事件，再投递邮件；投递失败不变成 verified，可由 resend 恢复。
 - 不实现登录、会话、密码恢复、邮箱变更、邀请解析、团队、SSE、Redis 或 CAPTCHA。
