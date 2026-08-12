@@ -18,6 +18,19 @@ button {
   font: inherit;
 }
 
+input {
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.55rem;
+  padding: 0.7rem;
+  font: inherit;
+}
+
+input:focus-visible {
+  outline: 3px solid #ea580c;
+  outline-offset: 2px;
+}
+
 .shell {
   display: grid;
   min-height: 100vh;
@@ -59,6 +72,41 @@ h1 {
   box-shadow: 0 1rem 3rem #17203314;
 }
 
+.account-card {
+  display: grid;
+  width: min(40rem, calc(100vw - 4rem));
+  gap: 1rem;
+  border: 1px solid #d6d3c8;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: #fffdf7;
+  box-shadow: 0 1rem 3rem #17203314;
+}
+
+.account-card h2,
+.account-card p {
+  margin: 0;
+}
+
+.account-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.account-form button {
+  border: 0;
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  color: #fffdf7;
+  background: #9a3412;
+  cursor: pointer;
+}
+
+.account-form button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .role-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -97,6 +145,10 @@ h1 {
   }
 
   .role-card {
+    width: calc(100vw - 2rem);
+  }
+
+  .account-card {
     width: calc(100vw - 2rem);
   }
 

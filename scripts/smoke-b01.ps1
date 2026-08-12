@@ -86,10 +86,16 @@ $previousHttpsPort = $env:TTSYNC_HTTPS_PORT
 $previousBaseUrl = $env:B01_BASE_URL
 $previousExpectedNavigationStatus = $env:B01_EXPECT_NAVIGATION_STATUS
 $previousRunBrowserSmoke = $env:B01_RUN_BROWSER_SMOKE
+$previousPublicOrigin = $env:TTSYNC_PUBLIC_ORIGIN
+$previousId01ComposeProject = $env:ID01_COMPOSE_PROJECT
+$previousId01ComposeFile = $env:ID01_COMPOSE_FILE
 $env:TTSYNC_POSTGRES_PASSWORD = "TEST_ONLY_$runId"
 $env:TTSYNC_HTTPS_PORT = $baseUri.Port.ToString()
 $env:B01_BASE_URL = $BaseUrl.TrimEnd('/')
 $env:B01_RUN_BROWSER_SMOKE = '1'
+$env:TTSYNC_PUBLIC_ORIGIN = $env:B01_BASE_URL
+$env:ID01_COMPOSE_PROJECT = $script:projectName
+$env:ID01_COMPOSE_FILE = $script:composeFile
 $databaseUrl = "postgres://ttsync:$($env:TTSYNC_POSTGRES_PASSWORD)@postgres:5432/ttsync?sslmode=disable"
 
 Push-Location $repositoryRoot
@@ -154,6 +160,7 @@ try {
 
   $env:B01_EXPECT_NAVIGATION_STATUS = $null
   Invoke-Native -Command node -Arguments @('--test', 'test/b01-browser-smoke.mjs')
+  Invoke-Native -Command node -Arguments @('--test', 'test/id01-browser-smoke.mjs')
 }
 finally {
   try {
@@ -187,6 +194,9 @@ finally {
     $env:B01_BASE_URL = $previousBaseUrl
     $env:B01_EXPECT_NAVIGATION_STATUS = $previousExpectedNavigationStatus
     $env:B01_RUN_BROWSER_SMOKE = $previousRunBrowserSmoke
+    $env:TTSYNC_PUBLIC_ORIGIN = $previousPublicOrigin
+    $env:ID01_COMPOSE_PROJECT = $previousId01ComposeProject
+    $env:ID01_COMPOSE_FILE = $previousId01ComposeFile
     Pop-Location
   }
 }

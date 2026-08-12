@@ -417,7 +417,13 @@ function assertClientAllowedSurface(sources) {
   const scriptImports = scriptFile.statements.filter(ts.isImportDeclaration);
   assert.equal(scriptImports.length, 1, 'App.vue 只能有一个 Vue import');
   assert.ok(scriptImports[0].moduleSpecifier.text === 'vue' && !scriptImports[0].importClause?.name, 'App.vue 只能从 vue 使用命名 import');
-  assert.deepEqual(scriptImports[0].importClause?.namedBindings?.elements.map((element) => element.name.text), ['ref'], 'App.vue 只允许 ref 状态能力');
+  const vueImports = scriptImports[0].importClause?.namedBindings?.elements.map((element) => element.name.text).sort();
+  assert.ok(
+    JSON.stringify(vueImports) === JSON.stringify(['ref'])
+      || JSON.stringify(vueImports) === JSON.stringify(['onMounted', 'ref']),
+    'App.vue 只允许 ref，或 ID-01 所需的 onMounted + ref',
+  );
+  const id01Client = vueImports.includes('onMounted');
 
   const allowedInitializer = (node) => {
     const value = unwrappedExpression(node);
@@ -426,17 +432,111 @@ function assertClientAllowedSurface(sources) {
     if (ts.isObjectLiteralExpression(value)) return value.properties.every((property) => ts.isPropertyAssignment(property) && allowedInitializer(property.initializer));
     return ts.isCallExpression(value) && ts.isIdentifier(value.expression) && value.expression.text === 'ref' && value.arguments.length === 1 && allowedInitializer(value.arguments[0]);
   };
-  for (const statement of scriptFile.statements.filter((statement) => !ts.isImportDeclaration(statement))) {
-    assert.ok(ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0, 'App.vue script 只允许 const 本地展示状态');
-    for (const declaration of statement.declarationList.declarations) {
-      assert.ok(ts.isIdentifier(declaration.name) && declaration.initializer && allowedInitializer(declaration.initializer), 'App.vue 状态初值只允许字面量、数组、对象或 ref');
+  if (!id01Client) {
+    for (const statement of scriptFile.statements.filter((statement) => !ts.isImportDeclaration(statement))) {
+      assert.ok(ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0, 'B-01 App.vue script 只允许 const 本地展示状态');
+      for (const declaration of statement.declarationList.declarations) {
+        assert.ok(ts.isIdentifier(declaration.name) && declaration.initializer && allowedInitializer(declaration.initializer), 'B-01 App.vue 状态初值只允许字面量、数组、对象或 ref');
+      }
     }
+  } else {
+    assert.ok(scriptFile.statements.every((statement) => ts.isImportDeclaration(statement)
+      || ts.isVariableStatement(statement)
+      || ts.isFunctionDeclaration(statement)
+      || ts.isExpressionStatement(statement)), 'ID-01 App.vue 只允许 import、const、函数与 onMounted 注册');
+    for (const statement of scriptFile.statements.filter(ts.isVariableStatement)) {
+      assert.ok((statement.declarationList.flags & ts.NodeFlags.Const) !== 0, 'ID-01 App.vue 顶层状态必须使用 const');
+    }
+
+    const forbiddenGlobals = new Set([
+      'XMLHttpRequest', 'WebSocket', 'EventSource', 'navigator', 'console', 'localStorage', 'sessionStorage',
+      'indexedDB', 'globalThis', 'window', 'self', 'eval', 'Function',
+    ]);
+    for (const node of nodesUnder(scriptFile)) {
+      if (ts.isIdentifier(node)) {
+        assert.ok(!forbiddenGlobals.has(node.text), `ID-01 App.vue 不允许 Web API：${node.text}`);
+      }
+      if (ts.isStringLiteralLike(node)) {
+        assert.doesNotMatch(node.text, /^(?:https?:)?\/\//i, 'ID-01 App.vue 不允许绝对或跨源 URL');
+      }
+      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+        if (node.expression.text === 'document') assert.equal(node.name.text, 'cookie', 'ID-01 App.vue document 只允许 cookie 读取');
+        if (node.expression.text === 'location') assert.equal(node.name.text, 'search', 'ID-01 App.vue location 只允许 search 读取');
+        if (node.expression.text === 'history') assert.equal(node.name.text, 'replaceState', 'ID-01 App.vue history 只允许 replaceState');
+      }
+      if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isPropertyAccessExpression(node.left)
+        && node.left.expression.getText(scriptFile) === 'document'
+        && node.left.name.text === 'cookie') {
+        assert.fail('ID-01 App.vue 只允许读取 document.cookie，不允许写入');
+      }
+    }
+
+    const allowedPaths = [
+      '/api/v1/accounts',
+      '/api/v1/accounts/verification',
+      '/api/v1/accounts/verification/resend',
+    ];
+    const postFunction = scriptFile.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === 'post');
+    assert.ok(postFunction?.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword), 'ID-01 App.vue 必须提供 async post helper');
+    const pathType = postFunction.parameters[0]?.type;
+    assert.ok(pathType && ts.isUnionTypeNode(pathType), 'post path 必须是三个固定路径的字面量 union');
+    assert.deepEqual(
+      pathType.types.map((type) => ts.isLiteralTypeNode(type) && ts.isStringLiteralLike(type.literal) ? type.literal.text : '').sort(),
+      allowedPaths,
+      'post path 只允许三个 ID-01 literal endpoint',
+    );
+
+    const fetchCalls = nodesUnder(scriptFile).filter((node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'fetch');
+    assert.equal(fetchCalls.length, 1, 'ID-01 App.vue 必须且只能在 helper 内调用一次原生 fetch');
+    const [fetchCall] = fetchCalls;
+    assert.ok(ts.isIdentifier(fetchCall.arguments[0]) && fetchCall.arguments[0].text === postFunction.parameters[0].name.getText(scriptFile), 'fetch URL 必须来自固定 literal union path');
+    const options = fetchCall.arguments[1];
+    assert.ok(options && ts.isObjectLiteralExpression(options), 'fetch 必须提供固定 options');
+    const property = (object, name) => object.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+      && ((ts.isIdentifier(candidate.name) || ts.isStringLiteralLike(candidate.name)) && candidate.name.text === name));
+    assert.deepEqual(options.properties.map((candidate) => candidate.name?.text).sort(), ['body', 'credentials', 'headers', 'method'], 'fetch options 只允许固定四项');
+    assert.ok(ts.isStringLiteralLike(property(options, 'method')?.initializer) && property(options, 'method').initializer.text === 'POST', 'fetch method 必须固定 POST');
+    assert.ok(ts.isStringLiteralLike(property(options, 'credentials')?.initializer) && property(options, 'credentials').initializer.text === 'same-origin', 'fetch credentials 必须固定 same-origin');
+    const headers = property(options, 'headers')?.initializer;
+    assert.ok(headers && ts.isObjectLiteralExpression(headers), 'fetch 必须提供固定 JSON/CSRF headers');
+    assert.deepEqual(headers.properties.map((candidate) => candidate.name?.text).sort(), ['Content-Type', 'X-CSRF-Token'], 'fetch headers 只允许 JSON 与 CSRF');
+    assert.ok(ts.isStringLiteralLike(property(headers, 'Content-Type')?.initializer) && property(headers, 'Content-Type').initializer.text === 'application/json', 'Content-Type 必须固定 application/json');
+    const csrfHeader = property(headers, 'X-CSRF-Token')?.initializer;
+    assert.ok(csrfHeader && ts.isCallExpression(csrfHeader) && ts.isIdentifier(csrfHeader.expression) && csrfHeader.expression.text === 'csrf' && csrfHeader.arguments.length === 0, 'X-CSRF-Token 必须来自只读 cookie helper');
+    const fetchBody = property(options, 'body')?.initializer;
+    assert.ok(fetchBody && ts.isCallExpression(fetchBody)
+      && fetchBody.expression.getText(scriptFile) === 'JSON.stringify'
+      && fetchBody.arguments[0]?.getText(scriptFile) === postFunction.parameters[1].name.getText(scriptFile), 'fetch body 必须 JSON.stringify 原始 payload');
+    assert.match(scriptMatch[1], /document\.cookie[\s\S]*__Host-ttsync-csrf=/, 'CSRF 必须只从首屏 cookie 读取');
+
+    const postCalls = nodesUnder(scriptFile).filter((node) => ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'post');
+    assert.equal(postCalls.length, 3, 'ID-01 App.vue 必须恰好调用三个固定 POST');
+    const requestFields = new Map([
+      ['/api/v1/accounts', ['email', 'password']],
+      ['/api/v1/accounts/verification/resend', ['email']],
+      ['/api/v1/accounts/verification', ['token']],
+    ]);
+    for (const call of postCalls) {
+      assert.ok(ts.isStringLiteralLike(call.arguments[0]) && requestFields.has(call.arguments[0].text), 'post 调用不得使用动态或其他 API URL');
+      const body = call.arguments[1];
+      assert.ok(body && ts.isObjectLiteralExpression(body), 'post payload 必须是对象字面量');
+      assert.deepEqual(body.properties.map((candidate) => candidate.name?.text).sort(), requestFields.get(call.arguments[0].text), `${call.arguments[0].text} payload 字段必须精确`);
+    }
+    const searchParams = nodesUnder(scriptFile).filter((node) => ts.isNewExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === 'URLSearchParams');
+    assert.equal(searchParams.length, 1, '验证页必须且只能读取一次 URLSearchParams');
+    assert.equal(searchParams[0].arguments?.[0]?.getText(scriptFile), 'location.search', 'URLSearchParams 只允许读取 location.search');
+    assert.match(scriptMatch[1], /history\.replaceState\(null,\s*['"]['"],\s*['"]\/verify['"]\)/, '读取 token 后必须清除地址栏查询参数');
   }
 
-  const allowedElements = new Set(['main', 'header', 'section', 'div', 'h1', 'p', 'nav', 'button', 'span', 'strong']);
-  const allowedAttributes = new Set(['class', 'id', 'type', 'role', 'tabindex', 'aria-label', 'aria-selected', 'aria-controls', 'v-for', 'v-if', 'v-else-if', 'v-else', ':key', ':class', ':aria-selected', '@click']);
+  const allowedElements = new Set(['main', 'header', 'section', 'div', 'h1', 'h2', 'p', 'nav', 'button', 'span', 'strong', 'form', 'label', 'input']);
+  const allowedAttributes = new Set(['class', 'id', 'for', 'name', 'type', 'role', 'tabindex', 'autocomplete', 'aria-label', 'aria-selected', 'aria-controls', 'aria-live', 'v-for', 'v-if', 'v-else-if', 'v-else', 'v-model', ':key', ':class', ':aria-selected', ':disabled', '@click', '@submit.prevent']);
   const urlAttributes = new Set(['href', 'src', 'srcset', 'action', 'formaction', 'poster', 'xlink:href']);
   const tabClickExpressions = [];
+  const submitExpressions = [];
   for (const match of templateMatch[1].matchAll(/<\s*(\/)?([A-Za-z][\w-]*)([^>]*)>/g)) {
     if (match[1]) continue;
     assert.ok(allowedElements.has(match[2]), `App.vue template 元素不在允许面：${match[2]}`);
@@ -447,6 +547,13 @@ function assertClientAllowedSurface(sources) {
       tabClickExpressions.push(clickMatches[0][1] ?? clickMatches[0][2]);
     } else {
       assert.equal(clickMatches.length, 0, 'App.vue @click 只允许三角色 tab');
+    }
+    const submitMatches = [...match[3].matchAll(/@submit\.prevent\s*=\s*(?:"([^"]*)"|'([^']*)')/g)];
+    if (match[2] === 'form') {
+      assert.equal(submitMatches.length, 1, 'ID-01 每个 form 必须恰好一个原生 submit handler');
+      submitExpressions.push(submitMatches[0][1] ?? submitMatches[0][2]);
+    } else {
+      assert.equal(submitMatches.length, 0, '@submit.prevent 只允许用于 form');
     }
     const remainder = match[3].replace(/([:@]?[A-Za-z_][\w:.-]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'))?/g, (attribute, name) => {
       assert.ok(!urlAttributes.has(name), `App.vue template 不允许任何 URL scheme：${name}`);
@@ -460,6 +567,17 @@ function assertClientAllowedSurface(sources) {
     ["activeRole = 'host'", "activeRole = 'participant'", "activeRole = 'spectator'"].sort(),
     'App.vue 三角色 tab 的 @click 只允许精确本地 activeRole 赋值',
   );
+  assert.doesNotMatch(
+    templateMatch[1],
+    /\b(?:fetch|post|register|resend|XMLHttpRequest|WebSocket|EventSource|sendBeacon|document|location|history|navigator|console|localStorage|sessionStorage|indexedDB)\s*(?:\.|\()/,
+    'App.vue template 表达式不得执行网络、导航或持久化能力',
+  );
+  if (id01Client) {
+    assert.deepEqual(submitExpressions.sort(), ['register', 'resend'], 'ID-01 template 只允许注册与重发两个 submit handler');
+    assert.match(templateMatch[1], /<label\b[^>]*for=(?:"|')register-email(?:"|')[^>]*>[\s\S]*?<input\b[^>]*id=(?:"|')register-email(?:"|')[^>]*type=(?:"|')email(?:"|')/, '注册邮箱必须有明确 label 与原生 email input');
+    assert.match(templateMatch[1], /<label\b[^>]*for=(?:"|')register-password(?:"|')[^>]*>[\s\S]*?<input\b[^>]*id=(?:"|')register-password(?:"|')[^>]*type=(?:"|')password(?:"|')/, '注册密码必须有明确 label 与原生 password input');
+    assert.match(templateMatch[1], /role=(?:"|')status(?:"|')[^>]*aria-live=(?:"|')polite(?:"|')/, 'ID-01 状态区域必须是 aria-live status');
+  }
   assert.doesNotMatch(sources['style.css'], /@(?:import|font-face)|\burl\s*\(|\bexpression\s*\(/i, 'style.css 不允许外链或可执行资源');
 }
 
@@ -1051,6 +1169,155 @@ function assertBrowserSmokeAllowedSurface(source) {
   assert.ok(callPosition(gotoCall) < callPosition(consoleAssertion), 'console 最终断言必须位于 page.goto 之后');
 }
 
+function assertId01BrowserSmokeAllowedSurface(source) {
+  const sourceFile = ts.createSourceFile('id01-browser-smoke.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  assert.deepEqual(sourceFile.parseDiagnostics ?? [], [], 'ID-01 browser smoke 必须是有效 JavaScript');
+  assert.doesNotMatch(source, /process\.exit\s*\(|console\.(?:log|info|warn|error)\s*\(|if\s*\(\s*false\s*\)/, 'ID-01 browser smoke 不得退出、打印或用不可达 decoy');
+
+  const registeredTest = sourceFile.statements.find((statement) => ts.isExpressionStatement(statement)
+    && ts.isCallExpression(statement.expression)
+    && ts.isIdentifier(statement.expression.expression)
+    && statement.expression.expression.text === 'test')?.expression;
+  assert.ok(registeredTest && registeredTest.arguments.length === 3, 'ID-01 browser smoke 必须注册带 option 的 node:test');
+  const testOptions = registeredTest.arguments[1];
+  assert.ok(testOptions && ts.isObjectLiteralExpression(testOptions), 'ID-01 browser smoke 必须提供显式 skip option');
+  const skipProperty = testOptions.properties.find((property) => ts.isPropertyAssignment(property) && property.name.getText(sourceFile) === 'skip');
+  assert.equal(skipProperty?.initializer.getText(sourceFile), "process.env.B01_RUN_BROWSER_SMOKE !== '1'", 'ID-01 browser smoke 必须复用 B01_RUN_BROWSER_SMOKE opt-in 并显式 skip');
+  const callback = registeredTest.arguments[2];
+  assert.ok(callback && ts.isArrowFunction(callback) && callback.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) && ts.isBlock(callback.body), 'ID-01 browser smoke 必须使用 async callback');
+  const tryIndex = callback.body.statements.findIndex(ts.isTryStatement);
+  assert.ok(tryIndex >= 0, 'ID-01 browser smoke 必须在 browser launch 后使用 try/finally');
+  const tryStatement = callback.body.statements[tryIndex];
+  assert.ok(tryStatement.finallyBlock, 'ID-01 browser smoke 必须提供 finally');
+  const runtimeProgram = { statements: [...callback.body.statements.slice(0, tryIndex), ...tryStatement.tryBlock.statements] };
+  const bindings = variableBindings(runtimeProgram);
+  const browserBinding = [...bindings.entries()].find(([, initializer]) => propertyCall(initializer, 'chromium', 'launch'));
+  assert.ok(browserBinding, 'ID-01 browser smoke 必须启动真实 Chromium');
+  const [browserName] = browserBinding;
+  assert.ok(nodesUnder(tryStatement.finallyBlock).some((node) => propertyCall(node, browserName, 'close')), 'ID-01 browser smoke finally 必须关闭 browser');
+  const contextBinding = [...bindings.entries()].find(([, initializer]) => propertyCall(initializer, browserName, 'newContext'));
+  assert.ok(contextBinding && contextBinding[1].getText(sourceFile).includes('ignoreHTTPSErrors: true'), 'ID-01 Chromium context 必须允许本地 Caddy 证书');
+  const [contextName] = contextBinding;
+  const pageBinding = [...bindings.entries()].find(([, initializer]) => propertyCall(initializer, contextName, 'newPage'));
+  assert.ok(pageBinding, 'ID-01 browser smoke 必须创建真实 page');
+  const [pageName] = pageBinding;
+
+  assert.match(source, /const baseUrl = process\.env\.B01_BASE_URL \?\? 'https:\/\/localhost:8443';/, 'ID-01 browser smoke 默认入口必须为 Caddy HTTPS');
+  assert.match(source, /const baseOrigin = new URL\(baseUrl\)\.origin;/, 'ID-01 browser smoke 必须导出严格 origin');
+  assert.match(source, /process\.env\.ID01_COMPOSE_PROJECT/, 'ID-01 browser smoke 必须读取精确 Compose project');
+  assert.match(source, /process\.env\.ID01_COMPOSE_FILE/, 'ID-01 browser smoke 必须读取精确 Compose file');
+
+  const callRecords = topLevelCallRecords(runtimeProgram);
+  const callPosition = (target) => callRecords.find(({ call }) => call === target)?.index;
+  const gotoCalls = callRecords.filter(({ call }) => propertyCall(call, pageName, 'goto'));
+  assert.equal(gotoCalls.length, 4, 'ID-01 browser smoke 必须真实导航首屏、验证、重放和重复注册');
+  assert.ok(gotoCalls.every(({ call }) => call.arguments[0] && (ts.isIdentifier(call.arguments[0]) || ts.isStringLiteralLike(call.arguments[0]))), 'ID-01 browser smoke 导航目标必须来自受控 URL');
+  const firstGotoPosition = gotoCalls[0].index;
+  const collectorForEvent = (eventName) => {
+    const record = callRecords.find(({ call }) => {
+      const onCall = propertyCall(call, pageName, 'on');
+      return onCall?.arguments[0] && ts.isStringLiteralLike(onCall.arguments[0]) && onCall.arguments[0].text === eventName;
+    });
+    assert.ok(record && record.index < firstGotoPosition, `ID-01 ${eventName} listener 必须早于首次 goto`);
+    const listener = record.call.arguments[1];
+    assert.ok(listener && (ts.isArrowFunction(listener) || ts.isFunctionExpression(listener)), `ID-01 ${eventName} listener 必须是函数`);
+    const eventNameIdentifier = listener.parameters[0]?.name?.text;
+    const push = nodesUnder(listener.body).find((node) => ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'push'
+      && node.arguments.some((argument) => expressionReferencesIdentifier(argument, eventNameIdentifier)));
+    assert.ok(push && reachableStatementContains(listener.body, push), `ID-01 ${eventName} listener 必须采集真实事件`);
+    return { listener, collector: push.expression.expression.getText(sourceFile) };
+  };
+  const requestCollector = collectorForEvent('request');
+  assert.ok(nodesUnder(requestCollector.listener.body).some((node) => ts.isBinaryExpression(node)
+    && node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken
+    && node.left.getText(sourceFile) === 'new URL(request.url()).origin'
+    && node.right.getText(sourceFile) === 'baseOrigin'), 'ID-01 request listener 必须用 URL.origin 严格判同源');
+  assert.doesNotMatch(requestCollector.listener.getText(sourceFile), /startsWith/, 'ID-01 request listener 不得用 startsWith 判同源');
+  const consoleCollector = collectorForEvent('console');
+  const responseCollector = collectorForEvent('response');
+
+  const finalDeepEqual = (collector) => {
+    const assertion = callRecords.find(({ call, index }) => index > gotoCalls.at(-1).index
+      && ts.isPropertyAccessExpression(call.expression)
+      && call.expression.getText(sourceFile) === 'assert.deepEqual'
+      && call.arguments[0]?.getText(sourceFile) === collector
+      && ts.isArrayLiteralExpression(call.arguments[1])
+      && call.arguments[1].elements.length === 0);
+    assert.ok(assertion, `ID-01 browser smoke 必须在全部导航后断言 ${collector} 为零`);
+  };
+  finalDeepEqual(requestCollector.collector);
+  finalDeepEqual(consoleCollector.collector);
+  assert.equal(responseCollector.collector, 'apiResponses', 'ID-01 response listener 必须采集真实 POST 响应');
+
+  const composeAppShell = nodesUnder(sourceFile).find((node) => ts.isCallExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === 'composeExec'
+    && node.arguments[0]?.getText(sourceFile) === "'app'"
+    && node.arguments[1]?.getText(sourceFile) === "'sh'"
+    && node.arguments[2]?.getText(sourceFile) === "'-c'");
+  assert.ok(composeAppShell && ts.isNoSubstitutionTemplateLiteral(composeAppShell.arguments[3]), 'outbox 必须由精确 docker compose exec -T app sh -c 读取');
+  const outboxCommand = composeAppShell.arguments[3].text;
+  assert.match(outboxCommand, /^stat -c %a \/tmp\/ttsync-outbox$/m, 'outbox 必须读取目录 Linux mode');
+  assert.match(outboxCommand, /^\s*stat -c %a "\$file"$/m, 'outbox 必须读取每个邮件文件 Linux mode');
+  assert.match(outboxCommand, /\/tmp\/ttsync-outbox\/\*\.eml/, 'outbox 只能从容器内默认目录读取 eml');
+  assert.ok(nodesUnder(sourceFile).some((node) => ts.isCallExpression(node)
+    && ts.isIdentifier(node.expression)
+    && node.expression.text === 'composeExec'
+    && node.arguments[0]?.getText(sourceFile) === "'postgres'"
+    && node.arguments.some((argument) => argument.getText(sourceFile) === "'psql'")), '数据库状态必须经同一精确 Compose project 的 postgres psql 查询');
+  const appLogs = bindings.get('appLogs');
+  assert.ok(appLogs && ts.isCallExpression(appLogs)
+    && ts.isIdentifier(appLogs.expression)
+    && appLogs.expression.text === 'execFileSync'
+    && appLogs.arguments[0]?.getText(sourceFile) === "'docker'"
+    && ts.isArrayLiteralExpression(appLogs.arguments[1])
+    && JSON.stringify(appLogs.arguments[1].elements.map((element) => element.getText(sourceFile))) === JSON.stringify([
+      "'compose'", "'-p'", 'composeProject', "'-f'", 'composeFile', "'logs'", "'--no-color'", "'app'",
+    ]), '秘密扫描必须读取同一精确 Compose project 的 app 日志');
+
+  const waitResponses = nodesUnder(tryStatement.tryBlock).filter((node) => propertyCall(node, pageName, 'waitForResponse'));
+  assert.equal(waitResponses.length, 4, 'ID-01 browser smoke 必须等待两次 register 与两次 verify 真实响应');
+  const waitedPaths = waitResponses.map((call) => {
+    const literals = nodesUnder(call.arguments[0]).filter(ts.isStringLiteralLike).map((node) => node.text);
+    return literals.find((value) => value.startsWith('/api/'));
+  }).sort();
+  assert.deepEqual(waitedPaths, [
+    '/api/v1/accounts',
+    '/api/v1/accounts',
+    '/api/v1/accounts/verification',
+    '/api/v1/accounts/verification',
+  ], 'ID-01 browser smoke 必须等待真实 register/verify/replay/duplicate endpoint');
+
+  const tryText = tryStatement.tryBlock.getText(sourceFile);
+  for (const required of [
+    "assert.equal((await firstRegisterResponse).status(), 200)",
+    "assert.equal((await verifyResponse).status(), 200)",
+    'assert.equal(replay.status(), 422)',
+    "assert.equal((await replay.json()).code, 'VALIDATION_FAILED')",
+    "assert.equal((await duplicateResponse).status(), 200)",
+    "assert.equal(accountState(email), '1|pending_verification')",
+    "assert.equal(accountState(email), '1|active')",
+    "assert.equal(firstOutbox.directoryMode, '700')",
+    "message.mode === '600'",
+    'Your request was received.',
+    '邮箱已验证。',
+    '验证链接无效或已失效。',
+    'assert.equal(expectedReplayConsoleErrors.length, 1)',
+    'status of 422',
+    'appLogs.includes(secret)',
+  ]) {
+    assert.ok(tryText.includes(required), `ID-01 browser smoke 缺少纵向证据：${required}`);
+  }
+  assert.match(source, /const acceptedMessage = '请求已受理，请查收邮件。';/, '注册与重复注册必须断言逐字相同的通用文案');
+  assert.match(tryText, /getByText\(acceptedMessage, \{ exact: true \}\)/, '两次注册必须从真实 UI 读取同一通用文案');
+  assert.match(tryText, /setTimeout\(resolve,\s*(?:6[1-9]|[7-9]\d)_?\d{3}\)/, 'token 重放前必须等待超过一分钟窗口');
+  assert.ok(tryText.includes("assert.match(duplicateMessages[0].body, /Your request was received\\./)"), '重复注册新增邮件必须是通用回执');
+  assert.ok(tryText.includes("assert.doesNotMatch(duplicateMessages[0].body, /\\/verify\\?token=/)"), '重复注册新增邮件不得包含验证链接');
+  assert.match(source, /'compose', '-p', composeProject, '-f', composeFile, 'exec', '-T', service/, 'compose helper 必须固定 project/file/exec -T');
+}
+
 test('Go AST validator 拒绝 import、路由和中间件绕过', () => {
   const fixtureDirectory = mkdtempSync(join(tmpdir(), 'ttsync-b01-go-fixtures-'));
   try {
@@ -1278,6 +1545,34 @@ await browser.close();`;
   }
 });
 
+test('ID-01 browser smoke 使用独立的完整纵向验收允许面', () => {
+  const id01Smoke = readFileSync(requireFile('test/id01-browser-smoke.mjs'), 'utf8');
+  assert.doesNotThrow(() => assertId01BrowserSmokeAllowedSurface(id01Smoke));
+  for (const [name, source] of [
+    ['伪装 PASS 而非显式 skip', id01Smoke.replace("skip: process.env.B01_RUN_BROWSER_SMOKE !== '1'", 'skip: false')],
+    ['非 HTTPS 首屏', id01Smoke.replace("'https://localhost:8443'", "'http://localhost:8443'")],
+    ['request listener startsWith', id01Smoke.replace('new URL(request.url()).origin !== baseOrigin', '!request.url().startsWith(baseUrl)')],
+    ['request listener 后置 decoy', id01Smoke.replace("    page.on('request',", "    await page.goto(baseUrl);\n    page.on('request',")],
+    ['缺 response 采集', id01Smoke.replace('apiResponses.push([new URL(response.url()).pathname, response.status()]);', 'void response;')],
+    ['outbox 非 app 容器', id01Smoke.replace("const output = composeExec('app', 'sh', '-c'", "const output = composeExec('postgres', 'sh', '-c'")],
+    ['目录权限 decoy', id01Smoke.replace('stat -c %a /tmp/ttsync-outbox', 'true # stat -c %a /tmp/ttsync-outbox')],
+    ['文件权限 decoy', id01Smoke.replace('  stat -c %a "$file"', '  true # stat -c %a "$file"')],
+    ['缺首次注册 200', id01Smoke.replace('assert.equal((await firstRegisterResponse).status(), 200);', 'assert.equal((await firstRegisterResponse).status(), 201);')],
+    ['缺验证 200', id01Smoke.replace('assert.equal((await verifyResponse).status(), 200);', 'assert.equal((await verifyResponse).status(), 201);')],
+    ['即时 429 冒充重放', id01Smoke.replace('assert.equal(replay.status(), 422);', 'assert.equal(replay.status(), 429);')],
+    ['错误 body code', id01Smoke.replace("'VALIDATION_FAILED'", "'RATE_LIMITED'")],
+    ['缺重复注册 200', id01Smoke.replace('assert.equal((await duplicateResponse).status(), 200);', 'assert.equal((await duplicateResponse).status(), 201);')],
+    ['等待窗口不足', id01Smoke.replace('61_000', '1_000')],
+    ['吞掉预期 422 浏览器诊断', id01Smoke.replace('assert.equal(expectedReplayConsoleErrors.length, 1);', 'assert.equal(expectedReplayConsoleErrors.length, 0);')],
+    ['日志来自非 app 服务', id01Smoke.replace("'logs', '--no-color', 'app'", "'logs', '--no-color', 'postgres'")],
+    ['日志断言不可达 decoy', id01Smoke.replace("assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');", "if (false) assert.ok(!appLogs.includes(secret), 'app 日志不得包含测试秘密或会话标识');")],
+    ['最终外联断言不可达 decoy', id01Smoke.replace('assert.deepEqual(externalRequests, []);', 'if (false) assert.deepEqual(externalRequests, []);')],
+    ['缺 finally close', id01Smoke.replace('await browser.close();', 'void browser;')],
+  ]) {
+    assert.throws(() => assertId01BrowserSmokeAllowedSurface(source), assert.AssertionError, `ID-01 browser validator 必须拒绝 ${name}`);
+  }
+});
+
 test('客户端源码 validator 采用空壳能力允许面', () => {
   const validSources = {
     'App.vue': `<script setup lang="ts">
@@ -1302,6 +1597,75 @@ createApp(App).mount('#app');`,
     'style.css': `.shell { color: #172033; }`,
   };
   assert.doesNotThrow(() => assertClientAllowedSurface(validSources));
+  const id01Sources = {
+    ...validSources,
+    'App.vue': `<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+const activeRole = ref('host');
+const email = ref('');
+const password = ref('');
+const registerMessage = ref('');
+const resendMessage = ref('');
+const verificationMessage = ref('');
+const submitting = ref(false);
+const csrf = () => document.cookie.split('; ').find((value) => value.startsWith('__Host-ttsync-csrf='))?.slice('__Host-ttsync-csrf='.length) ?? '';
+async function post(path: '/api/v1/accounts' | '/api/v1/accounts/verification/resend' | '/api/v1/accounts/verification', body: object) {
+  return fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }, body: JSON.stringify(body) });
+}
+async function register() { await post('/api/v1/accounts', { email: email.value, password: password.value }); }
+async function resend() { await post('/api/v1/accounts/verification/resend', { email: email.value }); }
+onMounted(async () => {
+  const token = new URLSearchParams(location.search).get('token');
+  if (!token) return;
+  history.replaceState(null, '', '/verify');
+  await post('/api/v1/accounts/verification', { token });
+});
+</script>
+<template>
+  <main class="shell">
+    <nav role="tablist">
+      <button role="tab" type="button" @click="activeRole = 'host'">主持人视图</button>
+      <button role="tab" type="button" @click="activeRole = 'participant'">参与者视图</button>
+      <button role="tab" type="button" @click="activeRole = 'spectator'">观众视图</button>
+    </nav>
+    <form @submit.prevent="register">
+      <label for="register-email">邮箱</label><input id="register-email" v-model="email" type="email">
+      <label for="register-password">密码</label><input id="register-password" v-model="password" type="password">
+      <button type="submit" :disabled="submitting">注册</button>
+    </form>
+    <form @submit.prevent="resend">
+      <button type="submit" :disabled="submitting">重发验证邮件</button>
+    </form>
+    <p role="status" aria-live="polite">{{ registerMessage }}{{ resendMessage }}{{ verificationMessage }}</p>
+  </main>
+</template>`,
+  };
+  assert.doesNotThrow(() => assertClientAllowedSurface(id01Sources), 'ID-01 合法客户端 fixture 必须通过');
+  for (const [name, app] of [
+    ['动态/其他 API URL', id01Sources['App.vue'].replace('fetch(path,', "fetch('/api/v1/teams',")],
+    ['绝对 URL', id01Sources['App.vue'].replace('fetch(path,', "fetch('https://example.invalid/api',")],
+    ['第二个 fetch', id01Sources['App.vue'].replace('async function register()', "fetch('/api/v1/accounts');\nasync function register()")],
+    ['非 POST', id01Sources['App.vue'].replace("method: 'POST'", "method: 'GET'")],
+    ['非 same-origin credentials', id01Sources['App.vue'].replace("credentials: 'same-origin'", "credentials: 'include'")],
+    ['CSRF header 非 cookie 值', id01Sources['App.vue'].replace("'X-CSRF-Token': csrf()", "'X-CSRF-Token': ''")],
+    ['body 非原 payload', id01Sources['App.vue'].replace('JSON.stringify(body)', 'JSON.stringify({})')],
+    ['XHR', id01Sources['App.vue'].replace('async function register()', 'new XMLHttpRequest();\nasync function register()')],
+    ['WebSocket', id01Sources['App.vue'].replace('async function register()', "new WebSocket('wss://example.invalid');\nasync function register()")],
+    ['cookie 写入', id01Sources['App.vue'].replace('async function register()', "document.cookie = 'x=y';\nasync function register()")],
+    ['document 其他能力', id01Sources['App.vue'].replace('async function register()', 'document.body;\nasync function register()')],
+    ['location 其他能力', id01Sources['App.vue'].replace('async function register()', 'location.href;\nasync function register()')],
+    ['history 其他能力', id01Sources['App.vue'].replace('async function register()', 'history.back();\nasync function register()')],
+    ['storage', id01Sources['App.vue'].replace('async function register()', "localStorage.setItem('email', email.value);\nasync function register()")],
+    ['验证页未清除 query', id01Sources['App.vue'].replace("history.replaceState(null, '', '/verify');", '')],
+    ['模板 submit 发网', id01Sources['App.vue'].replace('@submit.prevent="register"', '@submit.prevent="fetch(\'/api/v1/accounts\')"')],
+    ['模板插值发网', id01Sources['App.vue'].replace('{{ registerMessage }}', "{{ register() }}{{ registerMessage }}")],
+  ]) {
+    assert.throws(
+      () => assertClientAllowedSurface({ ...id01Sources, 'App.vue': app }),
+      assert.AssertionError,
+      `ID-01 客户端 validator 必须拒绝 ${name}`,
+    );
+  }
   for (const [name, sources] of [
     ['sendBeacon', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeRole = ref('host');", "const activeRole = ref('host');\nnavigator.sendBeacon('/audit');") }],
     ['任意网络 Web API', { ...validSources, 'App.vue': validSources['App.vue'].replace("const activeRole = ref('host');", "const activeRole = ref('host');\nfetch('/api/team');") }],
@@ -1354,9 +1718,30 @@ test('B-01 Compose 与 Caddy 只暴露三容器 HTTPS 运行面', () => {
   const composePath = requireFile('deployments/compose.yaml');
   const compose = parse(readFileSync(composePath, 'utf8'));
   assert.deepEqual(Object.keys(compose.services ?? {}).sort(), ['app', 'caddy', 'postgres'], 'Compose service 必须严格为 app,caddy,postgres');
+  assert.equal(
+    compose.services?.app?.environment?.PUBLIC_ORIGIN,
+    '${TTSYNC_PUBLIC_ORIGIN:-https://localhost:8443}',
+    'app PUBLIC_ORIGIN 必须来自 TTSYNC_PUBLIC_ORIGIN 且默认匹配本地 Caddy HTTPS',
+  );
   const caddySource = readFileSync(requireFile('deployments/Caddyfile'), 'utf8');
   assert.match(caddySource, /tls\s+internal/, 'Caddy 必须是唯一的本地 HTTPS 入口');
   assert.match(caddySource, /reverse_proxy\s+app:8080/, 'Caddy 只能反向代理应用服务');
+});
+
+test('Compose smoke 复用同一 project 运行 ID-01 并恢复环境', () => {
+  const smoke = readFileSync(requireFile('scripts/smoke-b01.ps1'), 'utf8');
+  for (const savedName of ['previousPublicOrigin', 'previousId01ComposeProject', 'previousId01ComposeFile']) {
+    assert.match(smoke, new RegExp(`\\$${savedName}\\s*=\\s*\\$env:`), `smoke 必须保存 ${savedName} 对应环境`);
+  }
+  assert.match(smoke, /\$env:TTSYNC_PUBLIC_ORIGIN\s*=\s*\$env:B01_BASE_URL/, 'PUBLIC_ORIGIN 必须精确复用 B01_BASE_URL');
+  assert.match(smoke, /\$env:ID01_COMPOSE_PROJECT\s*=\s*\$script:projectName/, 'ID-01 必须复用同一随机 Compose project');
+  assert.match(smoke, /\$env:ID01_COMPOSE_FILE\s*=\s*\$script:composeFile/, 'ID-01 必须复用同一 Compose 文件');
+  const b01Browser = smoke.lastIndexOf("@('--test', 'test/b01-browser-smoke.mjs')");
+  const id01Browser = smoke.indexOf("@('--test', 'test/id01-browser-smoke.mjs')");
+  assert.ok(b01Browser >= 0 && id01Browser > b01Browser, 'ID-01 browser 必须在最终 B-01 browser 通过后单独运行');
+  assert.match(smoke, /\$env:TTSYNC_PUBLIC_ORIGIN\s*=\s*\$previousPublicOrigin/, 'smoke finally 必须恢复 TTSYNC_PUBLIC_ORIGIN');
+  assert.match(smoke, /\$env:ID01_COMPOSE_PROJECT\s*=\s*\$previousId01ComposeProject/, 'smoke finally 必须恢复 ID01_COMPOSE_PROJECT');
+  assert.match(smoke, /\$env:ID01_COMPOSE_FILE\s*=\s*\$previousId01ComposeFile/, 'smoke finally 必须恢复 ID01_COMPOSE_FILE');
 });
 
 test('Task 5 镜像、浏览器与 Caddy 验收可重现且封闭绕过面', () => {
@@ -1444,6 +1829,14 @@ test('browser smoke 未启用时由 node:test 显式报告 skipped', () => {
   });
   assert.match(result, /# skipped 1\b/, 'browser smoke 必须显式计入 skipped');
   assert.doesNotMatch(result, /# pass 1\b/, 'browser smoke 未启用时不得伪报普通 PASS');
+
+  const id01Result = execFileSync(process.execPath, ['--test', 'test/id01-browser-smoke.mjs'], {
+    cwd: repositoryRoot,
+    env: environment,
+    encoding: 'utf8',
+  });
+  assert.match(id01Result, /# skipped 1\b/, 'ID-01 browser smoke 必须显式计入 skipped');
+  assert.doesNotMatch(id01Result, /# pass 1\b/, 'ID-01 browser smoke 未启用时不得伪报普通 PASS');
 });
 
 test('B-01 提供 Go、sqlc、四领域与前端的最小工件', () => {
