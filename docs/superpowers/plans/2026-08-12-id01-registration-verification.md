@@ -1,99 +1,58 @@
-# ID-01 Registration And Verification Implementation Plan
+# ID-01 注册与邮箱验证实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** 按 TDD 逐个切片实施；每个切片中文提交并独立复核。
 
-**Goal:** 经真实 PostgreSQL、Caddy HTTPS 与测试邮件完成公开注册、重发和一次性邮箱验证，不泄露账号是否存在。
+**目标：** 经真实 PostgreSQL、Caddy HTTPS 和测试邮件完成注册、重发与一次性邮箱验证，且不暴露账号是否存在。
 
-**Architecture:** `identity` Module 以一个目标型 Interface 拥有邮箱、密码、令牌和安全事件规则；PostgreSQL 是并发唯一性与令牌消费的权威。Chi 只做 anonymous-CSRF、DTO 与 Problem Details 映射；同一 Vue 客户端提供注册和验证视图；测试 outbox 是邮件 Adapter，不创建公开 outbox HTTP endpoint。
+**真相来源：** GitHub #31、`contracts/v1/openapi.yaml`、`docs/architecture/postgresql-model-v1.md`。本文件只记录实施顺序，不复制完整规格，也不新建 OpenSpec。
 
-**Tech Stack:** Go 1.25、Chi v5、pgx/v5 + sqlc、PostgreSQL 17、Argon2id、Vue 3、Playwright、Docker Compose。
+## 最小设计
 
-## Global Constraints
+- `identity.Module` 是具体类型，不增加单实现 Go interface、repository 或通用 UoW。
+- Module 直接使用 `pgxpool`；事务、唯一性、令牌和审计规则留在 Module 内。
+- 标准库负责邮箱 trim/lower、Unicode 可打印检查、CSPRNG、SHA-256、SMTP 和测试 outbox；密码哈希复用已安装的 `x/crypto/argon2`。
+- 邮件以一个函数参数作为内部 seam：生产用 SMTP，测试用写入容器临时目录的 outbox；不增加服务或公开 outbox endpoint。
+- 单机限速用进程内 mutex + map；`# ponytail:` 注明多实例时再换共享存储。
+- Vue 继续使用现有 `App.vue`，不增加路由、状态库或表单依赖。
 
-- 邮箱去首尾空白后保留展示写法，唯一键为整体小写；唯一性必须由 PostgreSQL 收敛。
-- 密码原样处理，只接受 15–128 个可打印 Unicode code point，并拒绝仓库内固定小型泄露密码清单。
-- 验证令牌使用 CSPRNG，24 小时、单次、分用途、代次递增；数据库只存 SHA-256 摘要。
-- 注册与重发使用相同通用受理响应；验证失败统一为 `token_invalid_or_expired`，不区分过期、重放、用途错误或旧代。
-- anonymous CSRF 使用同源 cookie + header；不新增 token 获取 API。
-- 邮件投递失败保留 pending 账号和可重发令牌，不伪装为已验证。
-- 不实现登录/会话、密码恢复、邮箱变更、邀请解析、团队、SSE、Redis 或 CAPTCHA。
+## 固定规则
 
----
+- 邮箱：trim 后保留展示写法，整体小写作为 PostgreSQL 唯一键。
+- 密码：原样处理；15–128 个可打印 Unicode code point；拒绝包内固定泄露密码集合。
+- 令牌：`crypto/rand` 生成，24 小时，按用途和 generation 单次消费；数据库只存 SHA-256。
+- 注册与重发始终返回 `{accepted:true}`；无效、过期、重放、旧代和用途错误统一返回同一个 422。
+- anonymous CSRF：首屏设置 Secure/SameSite 同源 cookie，客户端回送 `X-CSRF-Token`；不增加 token API。
+- 注册事务先提交 pending 账号、令牌和安全事件，再投递邮件；投递失败不变成 verified，可由 resend 恢复。
+- 不实现登录、会话、密码恢复、邮箱变更、邀请解析、团队、SSE、Redis 或 CAPTCHA。
 
-### Task 1: 修正公开注册合同
+## Slice 1 — 公开合同（完成：`fab0cf7`）
 
-**Files:**
-- Modify: `contracts/v1/openapi.yaml`
-- Modify: `contracts/v1/generated/api.ts`
-- Modify: `test/contracts.test.mjs`
+- [x] RED：注册响应泄露 `accountId`；CSRF 来源未说明；验证失败语义不统一。
+- [x] GREEN：注册/重发通用受理；CSRF cookie→header；五类无效令牌统一 422；生成类型无漂移。
 
-**Interfaces:**
-- Produces: 三个冻结 operation；注册与重发返回 `{accepted: true}`，验证返回 `{verified: true}`。
+## Slice 2 — identity + PostgreSQL
 
-- [ ] 先写合同失败测试，证明注册响应不得包含 `accountId`，重发与注册均为通用受理。
-- [ ] 运行 `node --test test/contracts.test.mjs` 取得预期 RED。
-- [ ] 最小修改 OpenAPI 并运行 `npm run contracts:generate`。
-- [ ] 运行 `npm run contracts:check` 取得 GREEN，中文提交。
+**修改：** `db/migrations/000002_identity_registration.sql`、`db/queries/identity/`、`db/sqlc.yaml`、`internal/identity/`。
 
-### Task 2: 交付 identity Module 与真实 PostgreSQL
+- [ ] RED（纯 Go）：邮箱展示/唯一键、Unicode 密码边界、泄露密码、令牌摘要/期限、限速桶。
+- [ ] RED（真实 PostgreSQL）：并发同邮箱只留一账号；重发新代废旧代；过期/重放/用途错/并发消费不改变状态；安全事件不含密码、完整令牌或摘要。
+- [ ] GREEN：三张表足够——`accounts`、`verification_tokens`、`identity_security_events`；增加一组 identity sqlc 查询和具体 `identity.Module`。
+- [ ] 验证：定向 unit/integration、`npm run db:generate`、`npm run test:go`；中文提交。
 
-**Files:**
-- Create: `db/migrations/000002_identity_registration.sql`
-- Create: `db/queries/identity/registration.sql`
-- Modify: `db/sqlc.yaml`
-- Create/Modify: `internal/identity/*.go`
-- Modify: `scripts/test-go.ps1`
+## Slice 3 — HTTP + CSRF + 邮件
 
-**Interfaces:**
-- Produces: `identity.Module` 的 `Register`、`ResendVerification`、`VerifyEmail` 三个目标命令；调用者只见命令、结果和稳定错误。
-- Consumes: PostgreSQL pool、`Clock.Now()`、`Mailer.SendVerification(...)`、安全随机源。
+**修改：** `internal/httpapi/`、`internal/app/`、`cmd/ttsync/`；只在需要时新增 `internal/platform/mail/`。
 
-- [ ] 先写纯领域 RED：邮箱/Unicode 密码/泄露清单/令牌摘要与期限。
-- [ ] 写真实 PostgreSQL RED：并发同邮箱唯一、代次替换、过期/重放/用途错/并发消费、审计白名单。
-- [ ] 添加最小 migration/sqlc 与 Module implementation；不建立通用 repository Interface。
-- [ ] 运行定向 unit/integration 与 `npm run db:generate` 取得 GREEN，中文提交。
+- [ ] RED：三个冻结 endpoint 的严格 JSON、CSRF、通用响应、统一 Problem Details、限速及日志秘密缺失。
+- [ ] RED：SMTP 失败后账号仍 pending 且 resend 可恢复；测试 outbox 文件权限为 0600。
+- [ ] GREEN：Chi 只解析/映射；app 组装具体 Module；SMTP/outbox 都通过同一个发送函数调用。
+- [ ] 验证：HTTP/app 定向测试、Go 全包；中文提交。
 
-### Task 3: 接通 HTTP、CSRF、邮件和应用组装
+## Slice 4 — Vue + 真实浏览器
 
-**Files:**
-- Modify: `internal/httpapi/router.go`, `router_test.go`
-- Modify: `internal/app/runtime.go`, `runtime_test.go`
-- Create: `internal/platform/mail/*.go`
-- Modify: `cmd/ttsync/main.go`
+**修改：** 现有 Vue 三文件、一个 `test/id01-browser-smoke.mjs`，以及现有 Compose smoke 的最小复用点。
 
-**Interfaces:**
-- Consumes: `identity.Module` 三个目标命令。
-- Produces: `/api/v1/accounts`、`/verification/resend`、`/verification`；首屏 anonymous-CSRF cookie；测试 outbox 仅进程内可读。
-
-- [ ] 先写 handler RED：CSRF、严格 JSON、通用响应、稳定 Problem Details、日志秘密缺失。
-- [ ] 写邮件失败 RED，证明 pending 状态可重发且未验证。
-- [ ] 最小接线并取得 handler/app GREEN，中文提交。
-
-### Task 4: 注册/验证网页与真实浏览器闭环
-
-**Files:**
-- Modify: `clients/web/src/App.vue`, `main.ts`, `style.css`
-- Create: `test/id01-browser-smoke.mjs`
-- Modify: `deployments/compose.yaml`, `Dockerfile`
-- Create/Modify: `scripts/smoke-id01.ps1`, `package.json`, `package-lock.json`, `README.md`
-
-**Interfaces:**
-- Produces: `npm run smoke:id01`，仍只启动 `app + postgres + caddy`。
-
-- [ ] 先写 Playwright RED：注册、读取测试邮件、验证、重放失败、重复注册通用反馈。
-- [ ] 在现有单页客户端添加最小可访问表单；不引入路由库或状态库。
-- [ ] 通过受限测试夹具取得 outbox 内容，不提供生产公开端点。
-- [ ] 运行真实 Caddy/PostgreSQL/Chromium GREEN，验证日志无密码/完整令牌，中文提交。
-
-### Task 5: 最终验证与双轴复核
-
-**Files:**
-- Modify only files required by review findings.
-
-**Interfaces:**
-- Consumes: fixed point `433a1f9` and GitHub #31.
-- Produces: clean reviewed branch and fresh verification evidence.
-
-- [ ] 运行 contracts/MVP/structure/sqlc/web/Go/vet/真实 PostgreSQL/ID01 smoke/diff-check。
-- [ ] Standards 与 Spec 两轴并行只读复核；任何 P0/P1/P2 先 RED→GREEN 修复。
-- [ ] 中文提交，推送 `gofromzero/issue-31-id01`，评论并仅在全部验收有证据时关闭 #31。
+- [ ] RED：真实浏览器注册 → 从容器测试 outbox 读取链接 → 验证；重复注册反馈相同；令牌重放失败。
+- [ ] GREEN：在 `App.vue` 加原生表单；测试模式只通过 `docker compose exec` 读取 outbox，不公开 HTTP endpoint；仍恰好三个容器。
+- [ ] 验证：contracts/MVP/structure/sqlc/web/Go/vet、真实 PostgreSQL、Caddy/Chromium、秘密扫描、资源零残留。
+- [ ] Standards 与 Spec 并行复核；修完全部 finding 后中文提交、推送分支并关闭 #31。
