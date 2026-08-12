@@ -49,6 +49,7 @@ func applicationConfigFromEnvironment() (app.Config, error) {
 	}
 	hostname := strings.ToLower(parsedOrigin.Hostname())
 	port := parsedOrigin.Port()
+	portNumber := 0
 	if strings.HasSuffix(parsedOrigin.Host, ":") || strings.Contains(hostname, ":") && net.ParseIP(hostname) == nil {
 		return app.Config{}, fmt.Errorf("PUBLIC_ORIGIN must have a valid port")
 	}
@@ -57,13 +58,14 @@ func applicationConfigFromEnvironment() (app.Config, error) {
 		if err != nil || number < 1 || number > 65535 {
 			return app.Config{}, fmt.Errorf("PUBLIC_ORIGIN must have a valid port")
 		}
+		portNumber = number
 	}
 	originHost := hostname
 	if strings.Contains(hostname, ":") {
 		originHost = "[" + hostname + "]"
 	}
-	if port != "" && port != "443" {
-		originHost = net.JoinHostPort(hostname, port)
+	if port != "" && portNumber != 443 {
+		originHost = net.JoinHostPort(hostname, strconv.Itoa(portNumber))
 	}
 	publicOrigin = "https://" + originHost
 

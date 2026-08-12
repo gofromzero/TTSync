@@ -72,6 +72,29 @@ func TestApplicationConfigFromEnvironmentAcceptsOutboxOrCompleteSMTP(t *testing.
 	}
 }
 
+func TestApplicationConfigFromEnvironmentCanonicalizesNumericPorts(t *testing.T) {
+	tests := []struct {
+		origin, want string
+	}{
+		{origin: "https://example.test:0443", want: "https://example.test"},
+		{origin: "https://example.test:08443", want: "https://example.test:8443"},
+	}
+	for _, test := range tests {
+		t.Run(test.origin, func(t *testing.T) {
+			clearMailEnvironment(t)
+			t.Setenv("DATABASE_URL", "postgres://example.test/ttsync")
+			t.Setenv("PUBLIC_ORIGIN", test.origin)
+			config, err := applicationConfigFromEnvironment()
+			if err != nil {
+				t.Fatalf("applicationConfigFromEnvironment() error = %v", err)
+			}
+			if config.PublicOrigin != test.want {
+				t.Fatalf("PublicOrigin = %q, want %q", config.PublicOrigin, test.want)
+			}
+		})
+	}
+}
+
 func TestApplicationConfigFromEnvironmentRejectsInvalidOriginAndMail(t *testing.T) {
 	tests := []struct {
 		name string
