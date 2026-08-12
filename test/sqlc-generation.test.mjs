@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -86,5 +86,23 @@ test('sqlc generation rejects a tampered release archive and cleans up', () => {
     assertNoSqlcTempDirectory(environment);
   } finally {
     rmSync(environment.root, { recursive: true, force: true });
+  }
+});
+
+test('sqlc generation rejects identity generated-tree drift', () => {
+  const generated = join(repositoryRoot, 'internal/identity/sqlc/models.go');
+  const original = readFileSync(generated, 'utf8');
+  try {
+    writeFileSync(generated, `${original}\n// intentional drift\n`);
+    const generation = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/generate-sqlc.ps1'], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      timeout: 300_000,
+    });
+    const output = `${generation.stdout ?? ''}${generation.stderr ?? ''}`;
+    assert.notEqual(generation.status, 0, `identity drift was accepted:\n${output}`);
+    assert.match(output, /sqlc generated content drifted: models\.go/);
+  } finally {
+    writeFileSync(generated, original);
   }
 });

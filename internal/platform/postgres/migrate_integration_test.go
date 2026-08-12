@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -64,8 +65,9 @@ func TestMigrationIsIdempotentAndRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("iterate migrated tables: %v", err)
 	}
 	rows.Close()
-	if len(tableNames) != 1 || tableNames[0] != "schema_migrations" {
-		t.Fatalf("migrated tables = %v, want only schema_migrations", tableNames)
+	wantTables := []string{"accounts", "identity_security_events", "schema_migrations", "verification_tokens"}
+	if !slices.Equal(tableNames, wantTables) {
+		t.Fatalf("migrated tables = %v, want %v", tableNames, wantTables)
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE schema_migrations SET checksum = repeat('0', 64) WHERE version = 1`); err != nil {

@@ -71,6 +71,13 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'sqlc generated output drifted; run npm run db:generate and commit the result'
     }
+
+    & (Join-Path $PSScriptRoot 'assert-generated-tree.ps1') `
+        -ExpectedDirectory (Join-Path $repositoryRoot 'internal/identity/sqlc') `
+        -ActualDirectory (Join-Path $workspacePath 'internal/identity/sqlc')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'identity sqlc generated output drifted; run npm run db:generate and commit the result'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $tempDirectory) {

@@ -2,9 +2,17 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "queries/platform"
-    schema: "migrations"
+    schema: "migrations/000001_platform_schema_migrations.sql"
     gen:
       go:
         package: "sqlc"
         out: "../internal/platform/postgres/sqlc"
+        sql_package: "pgx/v5"
+  - engine: "postgresql"
+    queries: "queries/identity"
+    schema: "migrations/000002_identity_registration.sql"
+    gen:
+      go:
+        package: "identitysqlc"
+        out: "../internal/identity/sqlc"
         sql_package: "pgx/v5"
