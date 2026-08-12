@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -42,11 +44,27 @@ func applicationConfigFromEnvironment() (app.Config, error) {
 		publicOrigin = "https://localhost:8443"
 	}
 	parsedOrigin, err := url.Parse(publicOrigin)
-	if err != nil || parsedOrigin.Scheme != "https" || parsedOrigin.Host == "" || parsedOrigin.User != nil || parsedOrigin.RawQuery != "" || parsedOrigin.Fragment != "" || parsedOrigin.RawPath != "" || parsedOrigin.Opaque != "" || parsedOrigin.Path != "" && parsedOrigin.Path != "/" {
+	if err != nil || parsedOrigin.Scheme != "https" || parsedOrigin.Hostname() == "" || parsedOrigin.User != nil || parsedOrigin.Path != "" || parsedOrigin.RawPath != "" || parsedOrigin.RawQuery != "" || parsedOrigin.ForceQuery || strings.Contains(publicOrigin, "#") || parsedOrigin.Opaque != "" {
 		return app.Config{}, fmt.Errorf("PUBLIC_ORIGIN must be an absolute HTTPS origin")
 	}
-	originHost := strings.ToLower(parsedOrigin.Host)
-	originHost = strings.TrimSuffix(originHost, ":443")
+	hostname := strings.ToLower(parsedOrigin.Hostname())
+	port := parsedOrigin.Port()
+	if strings.HasSuffix(parsedOrigin.Host, ":") || strings.Contains(hostname, ":") && net.ParseIP(hostname) == nil {
+		return app.Config{}, fmt.Errorf("PUBLIC_ORIGIN must have a valid port")
+	}
+	if port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 {
+			return app.Config{}, fmt.Errorf("PUBLIC_ORIGIN must have a valid port")
+		}
+	}
+	originHost := hostname
+	if strings.Contains(hostname, ":") {
+		originHost = "[" + hostname + "]"
+	}
+	if port != "" && port != "443" {
+		originHost = net.JoinHostPort(hostname, port)
+	}
 	publicOrigin = "https://" + originHost
 
 	mailConfig := mail.Config{

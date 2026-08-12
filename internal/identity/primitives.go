@@ -69,7 +69,7 @@ func validatePassword(password string) error {
 }
 
 func newVerificationToken(now time.Time, random func([]byte) (int, error)) (verificationToken, error) {
-	bytes := make([]byte, 16)
+	bytes := make([]byte, 24)
 	if n, err := random(bytes); err != nil || n != len(bytes) {
 		if err == nil {
 			err = errors.New("short random read")

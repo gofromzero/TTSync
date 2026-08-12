@@ -102,6 +102,23 @@ func New(config Config) http.Handler {
 		}
 		return true
 	}
+	exactKeys := func(writer http.ResponseWriter, request *http.Request, requestID string, body map[string]json.RawMessage, allowed ...string) bool {
+		if body == nil {
+			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
+			return false
+		}
+		for key := range body {
+			found := false
+			for _, candidate := range allowed {
+				found = found || key == candidate
+			}
+			if !found {
+				writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段名称无效。")
+				return false
+			}
+		}
+		return true
+	}
 	authorize := func(writer http.ResponseWriter, request *http.Request) (string, bool) {
 		requestID := newRequestID(request.Header.Get("X-Request-ID"))
 		writer.Header().Set("X-Request-ID", requestID)
@@ -159,29 +176,27 @@ func New(config Config) http.Handler {
 		if !ok {
 			return
 		}
-		var body *struct {
-			Email, Password, InvitationToken json.RawMessage
-		}
-		if !decodeJSON(writer, request, requestID, &body) || body == nil {
-			if body == nil && writer.Header().Get("Content-Type") != "application/problem+json" {
-				writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
-			}
+		var body map[string]json.RawMessage
+		if !decodeJSON(writer, request, requestID, &body) || !exactKeys(writer, request, requestID, body, "email", "password", "invitationToken") {
 			return
 		}
-		if len(body.Email) == 0 {
+		emailRaw, hasEmail := body["email"]
+		if !hasEmail {
 			writeValidation(writer, request, requestID, "email")
 			return
 		}
-		if len(body.Password) == 0 {
+		passwordRaw, hasPassword := body["password"]
+		if !hasPassword {
 			writeValidation(writer, request, requestID, "password")
 			return
 		}
+		invitationRaw, hasInvitation := body["invitationToken"]
 		var email, password, invitationToken string
-		if body.Email[0] != '"' || body.Password[0] != '"' || len(body.InvitationToken) > 0 && body.InvitationToken[0] != '"' || json.Unmarshal(body.Email, &email) != nil || json.Unmarshal(body.Password, &password) != nil || len(body.InvitationToken) > 0 && json.Unmarshal(body.InvitationToken, &invitationToken) != nil {
+		if len(emailRaw) == 0 || len(passwordRaw) == 0 || emailRaw[0] != '"' || passwordRaw[0] != '"' || hasInvitation && (len(invitationRaw) == 0 || invitationRaw[0] != '"') || json.Unmarshal(emailRaw, &email) != nil || json.Unmarshal(passwordRaw, &password) != nil || hasInvitation && json.Unmarshal(invitationRaw, &invitationToken) != nil {
 			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
 			return
 		}
-		if invitationToken != "" && (len(invitationToken) < 32 || len(invitationToken) > 512) {
+		if hasInvitation && (len(invitationToken) < 32 || len(invitationToken) > 512) {
 			writeValidation(writer, request, requestID, "invitationToken")
 			return
 		}
@@ -199,19 +214,17 @@ func New(config Config) http.Handler {
 		if !ok {
 			return
 		}
-		var body *struct{ Email json.RawMessage }
-		if !decodeJSON(writer, request, requestID, &body) || body == nil {
-			if body == nil && writer.Header().Get("Content-Type") != "application/problem+json" {
-				writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
-			}
+		var body map[string]json.RawMessage
+		if !decodeJSON(writer, request, requestID, &body) || !exactKeys(writer, request, requestID, body, "email") {
 			return
 		}
-		if len(body.Email) == 0 {
+		emailRaw, found := body["email"]
+		if !found {
 			writeValidation(writer, request, requestID, "email")
 			return
 		}
 		var email string
-		if body.Email[0] != '"' || json.Unmarshal(body.Email, &email) != nil {
+		if len(emailRaw) == 0 || emailRaw[0] != '"' || json.Unmarshal(emailRaw, &email) != nil {
 			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
 			return
 		}
@@ -229,19 +242,17 @@ func New(config Config) http.Handler {
 		if !ok {
 			return
 		}
-		var body *struct{ Token json.RawMessage }
-		if !decodeJSON(writer, request, requestID, &body) || body == nil {
-			if body == nil && writer.Header().Get("Content-Type") != "application/problem+json" {
-				writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求必须是单个 JSON 对象。")
-			}
+		var body map[string]json.RawMessage
+		if !decodeJSON(writer, request, requestID, &body) || !exactKeys(writer, request, requestID, body, "token") {
 			return
 		}
-		if len(body.Token) == 0 {
+		tokenRaw, found := body["token"]
+		if !found {
 			writeValidation(writer, request, requestID, "token")
 			return
 		}
 		var token string
-		if body.Token[0] != '"' || json.Unmarshal(body.Token, &token) != nil {
+		if len(tokenRaw) == 0 || tokenRaw[0] != '"' || json.Unmarshal(tokenRaw, &token) != nil {
 			writeProblem(writer, request, requestID, http.StatusBadRequest, "MALFORMED_REQUEST", "请求无法解析", "请求字段类型无效。")
 			return
 		}

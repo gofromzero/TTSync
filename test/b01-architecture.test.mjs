@@ -601,7 +601,9 @@ function assertHttpapiAllowedSurface(inspection) {
   assert.ok(registrations.some((call) => call.Name === 'Get' && call.Arguments[0]?.Kind === 'string' && call.Arguments[0].Value === '/health/ready'), '必须注册 /health/ready');
 
   const assertInlineHTTPHandler = (argument, label) => {
-    assert.equal(argument?.Kind, 'expression', `${label} 必须直接使用 inline func，不能从其他声明注入 handler`);
+    if (argument?.Kind !== 'expression') {
+      throw new assert.AssertionError({ message: `${label} 必须直接使用 inline func，不能从其他声明注入 handler` });
+    }
     assert.match(
       argument.Value,
       /^func\((?:[A-Za-z_]\w*\s+)?http\.ResponseWriter,\s*(?:[A-Za-z_]\w*\s+)?\*http\.Request\)\s*\{/,
@@ -636,7 +638,7 @@ function assertHttpapiAllowedSurface(inspection) {
   assert.ok(routerFile.Selectors.some((selector) => selector.Function === 'New' && selector.Receiver === configName && selector.Name === 'Web' && selector.ObjectKind === 'var'), 'SPA 必须消费 Config.Web');
 
   const allowedStandardCallPackages = new Set(['crypto/rand', 'crypto/subtle', 'encoding/base64', 'encoding/hex', 'encoding/json', 'errors', 'fmt', 'io', 'io/fs', 'mime', 'net', 'net/http', 'net/url', 'path', 'strings', 'time']);
-  const allowedLocalAdapterCalls = new Set(['newRequestID', 'writeProblem', 'writeValidation', 'mapError', 'decodeJSON', 'authorize', 'requestIP', 'issueCSRF']);
+  const allowedLocalAdapterCalls = new Set(['newRequestID', 'writeProblem', 'writeValidation', 'mapError', 'decodeJSON', 'exactKeys', 'authorize', 'requestIP', 'issueCSRF']);
   for (const call of routerFile.Calls.filter((candidate) => candidate.Function === 'New')) {
     const isChi = call.Package === 'github.com/go-chi/chi/v5';
     const isStandard = allowedStandardCallPackages.has(call.Package);
@@ -729,6 +731,67 @@ var embeddedWeb embed.FS
 func WebAssets() fs.FS { return embeddedWeb }
 `;
     assert.doesNotThrow(() => assertHttpapiAllowedSurface(inspectGoFiles(writeGoPackageFixture(fixtureDirectory, '合法 ID-01 HTTP adapter', { 'router.go': router, 'web.go': web }))));
+  } finally {
+    rmSync(fixtureDirectory, { recursive: true, force: true });
+  }
+});
+
+test('Go AST validator 独立拒绝 New 内局部 handler 变量', () => {
+  const fixtureDirectory = mkdtempSync(join(tmpdir(), 'ttsync-id01-local-handler-fixture-'));
+  try {
+    const router = `package httpapi
+
+import (
+  "context"
+  "io/fs"
+  "net/http"
+
+  "github.com/go-chi/chi/v5"
+  "github.com/gofromzero/ttsync/internal/identity"
+)
+
+type Config struct {
+  Ready func(context.Context) error
+  Web fs.FS
+  PublicOrigin string
+  Register func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error)
+  ResendVerification func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error)
+  VerifyEmail func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error)
+}
+
+func New(config Config) http.Handler {
+  router := chi.NewRouter()
+  router.Get("/health/live", func(http.ResponseWriter, *http.Request) {})
+  router.Get("/health/ready", func(writer http.ResponseWriter, request *http.Request) {
+    if config.Ready(request.Context()) != nil { writer.WriteHeader(http.StatusServiceUnavailable) }
+  })
+  registerHandler := func(_ http.ResponseWriter, request *http.Request) { _, _ = config.Register(request.Context(), identity.RegisterCommand{}) }
+  router.Post("/api/v1/accounts", registerHandler)
+  router.Post("/api/v1/accounts/verification/resend", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.ResendVerification(request.Context(), identity.ResendVerificationCommand{}) })
+  router.Post("/api/v1/accounts/verification", func(_ http.ResponseWriter, request *http.Request) { _, _ = config.VerifyEmail(request.Context(), identity.VerifyEmailCommand{}) })
+  router.NotFound(func(writer http.ResponseWriter, request *http.Request) { http.FileServer(http.FS(config.Web)).ServeHTTP(writer, request) })
+  return router
+}`;
+    const web = `package httpapi
+
+import (
+  "embed"
+  "io/fs"
+)
+
+//go:embed web/dist/*
+var embeddedWeb embed.FS
+
+func WebAssets() fs.FS { return embeddedWeb }
+`;
+    const inspection = inspectGoFiles(writeGoPackageFixture(fixtureDirectory, '局部 handler 变量', { 'router.go': router, 'web.go': web }));
+    let diagnostic = '';
+    try {
+      assertHttpapiAllowedSurface(inspection);
+    } catch (error) {
+      diagnostic = error.message;
+    }
+    assert.equal(diagnostic, '/api/v1/accounts handler 必须直接使用 inline func，不能从其他声明注入 handler');
   } finally {
     rmSync(fixtureDirectory, { recursive: true, force: true });
   }

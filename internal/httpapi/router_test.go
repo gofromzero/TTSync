@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -134,6 +136,11 @@ func TestWebIndexIssuesStableCSRFCookie(t *testing.T) {
 
 func TestIdentityPostsPassCommandsAndReturnOnlyContractFields(t *testing.T) {
 	const requestID = "018f5f60-c9c7-77e3-a6bb-08de53542952"
+	tokenBytes := make([]byte, 24)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		t.Fatalf("generate verification token: %v", err)
+	}
+	generatedToken := base64.RawURLEncoding.EncodeToString(tokenBytes)
 	tests := []struct {
 		name, path, body, wantBody string
 		configure                  func(*Config, *string)
@@ -163,7 +170,7 @@ func TestIdentityPostsPassCommandsAndReturnOnlyContractFields(t *testing.T) {
 			},
 		},
 		{
-			name: "verify", path: "/api/v1/accounts/verification", body: `{"token":"01234567890123456789012345678901"}`, wantBody: "{\"verified\":true}\n",
+			name: "verify", path: "/api/v1/accounts/verification", body: `{"token":"` + generatedToken + `"}`, wantBody: "{\"verified\":true}\n",
 			configure: func(config *Config, got *string) {
 				config.VerifyEmail = func(_ context.Context, command identity.VerifyEmailCommand) (identity.VerifiedResult, error) {
 					*got = command.Token + "|" + command.IP + "|" + command.RequestID
@@ -195,11 +202,57 @@ func TestIdentityPostsPassCommandsAndReturnOnlyContractFields(t *testing.T) {
 				t.Fatalf("headers = %#v", response.Header())
 			}
 			if test.name == "verify" {
-				if got != "01234567890123456789012345678901|198.51.100.7|"+requestID {
+				if got != generatedToken+"|198.51.100.7|"+requestID {
 					t.Fatalf("command = %q", got)
 				}
 			} else if got != "User@example.com|198.51.100.7|"+requestID {
 				t.Fatalf("command = %q", got)
+			}
+		})
+	}
+}
+
+func TestIdentityPostsRequireExactJSONKeysAndInvitationTokenPresenceSemantics(t *testing.T) {
+	tests := []struct{ name, path, body string }{
+		{name: "register Email", path: "/api/v1/accounts", body: `{"Email":"user@example.com","password":"a secure passphrase"}`},
+		{name: "register Password", path: "/api/v1/accounts", body: `{"email":"user@example.com","Password":"a secure passphrase"}`},
+		{name: "register InvitationToken", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase","InvitationToken":"01234567890123456789012345678901"}`},
+		{name: "resend Email", path: "/api/v1/accounts/verification/resend", body: `{"Email":"user@example.com"}`},
+		{name: "verify Token", path: "/api/v1/accounts/verification", body: `{"Token":"01234567890123456789012345678901"}`},
+		{name: "empty invitation token", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase","invitationToken":""}`},
+		{name: "31 byte invitation token", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase","invitationToken":"0123456789012345678901234567890"}`},
+		{name: "513 byte invitation token", path: "/api/v1/accounts", body: `{"email":"user@example.com","password":"a secure passphrase","invitationToken":"` + strings.Repeat("x", 513) + `"}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := 0
+			config := Config{PublicOrigin: "https://localhost:8443"}
+			config.Register = func(context.Context, identity.RegisterCommand) (identity.AcceptedResult, error) {
+				called++
+				return identity.AcceptedResult{Accepted: true}, nil
+			}
+			config.ResendVerification = func(context.Context, identity.ResendVerificationCommand) (identity.AcceptedResult, error) {
+				called++
+				return identity.AcceptedResult{Accepted: true}, nil
+			}
+			config.VerifyEmail = func(context.Context, identity.VerifyEmailCommand) (identity.VerifiedResult, error) {
+				called++
+				return identity.VerifiedResult{Verified: true}, nil
+			}
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "https://localhost:8443")
+			request.Header.Set("X-CSRF-Token", "csrf-token")
+			request.AddCookie(&http.Cookie{Name: "__Host-ttsync-csrf", Value: "csrf-token"})
+			response := httptest.NewRecorder()
+
+			New(config).ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest && response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, want 400 or 422", response.Code)
+			}
+			if called != 0 {
+				t.Fatalf("identity called %d times", called)
 			}
 		})
 	}

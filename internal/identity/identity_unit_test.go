@@ -37,6 +37,9 @@ func TestNewVerificationTokenReturnsRawButKeepsOnlyDigestAndExactExpiry(t *testi
 	if err != nil {
 		t.Fatalf("new token: %v", err)
 	}
+	if len(token.raw) < 32 || len(token.raw) > 512 {
+		t.Fatalf("token wire length = %d, want 32..512", len(token.raw))
+	}
 	rawBytes, err := base64.RawURLEncoding.DecodeString(token.raw)
 	if err != nil {
 		t.Fatalf("token is not URL-safe base64: %v", err)
