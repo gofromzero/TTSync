@@ -47,7 +47,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 使用一次性令牌验证邮箱 */
+        /**
+         * 使用一次性令牌验证邮箱
+         * @description 令牌无效、过期、重放、被新令牌取代或用途错误均返回相同的 422 VALIDATION_FAILED，不暴露具体原因。
+         */
         post: operations["verifyEmail"];
         delete?: never;
         options?: never;
@@ -1170,12 +1173,12 @@ export interface components {
             height: number;
         };
         RegisterAccountResponse: {
-            /** Format: uuid */
-            accountId: string;
-            verificationRequired: boolean;
+            /** @constant */
+            accepted: true;
         };
         ResendVerificationResponse: {
-            accepted: boolean;
+            /** @constant */
+            accepted: true;
         };
         VerifyEmailResponse: {
             verified: boolean;

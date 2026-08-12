@@ -93,6 +93,39 @@ test('MVP-01 至 MVP-11 的公开 HTTP operation 完整且稳定', async () => {
   assert.deepEqual(actual.sort(), [...publicOperationIds].sort());
 });
 
+test('注册与重发均只返回不可枚举的通用接受结果', async () => {
+  const api = await loadOpenApi();
+  for (const name of ['RegisterAccountResponse', 'ResendVerificationResponse']) {
+    const schema = api.components.schemas[name];
+    assert.deepEqual(schema.required, ['accepted']);
+    assert.deepEqual(Object.keys(schema.properties), ['accepted']);
+    assert.equal(schema.properties.accepted.const, true);
+  }
+  assert.equal(api.components.schemas.RegisterAccountRequest.required.includes('invitationToken'), false);
+});
+
+test('匿名 CSRF 仅声明同源 Cookie 取值后回显到请求头', async () => {
+  const api = await loadOpenApi();
+  const scheme = api.components.securitySchemes.anonymousCsrf;
+  assert.deepEqual({ type: scheme.type, in: scheme.in, name: scheme.name }, {
+    type: 'apiKey', in: 'header', name: 'X-CSRF-Token',
+  });
+  assert.match(scheme.description, /同源.*Cookie.*X-CSRF-Token/);
+  assert.equal(Object.keys(api.paths).some((path) => /csrf/i.test(path)), false);
+});
+
+test('验证令牌的无效原因统一窄化为 422 VALIDATION_FAILED', async () => {
+  const api = await loadOpenApi();
+  const operation = api.paths['/v1/accounts/verification'].post;
+  for (const cause of ['无效', '过期', '重放', '被新令牌取代', '用途错误']) {
+    assert.match(operation.description, new RegExp(cause));
+  }
+  assert.equal(operation.responses['422'].$ref, '#/components/responses/UnprocessableEntity');
+  const schema = responseSchema(api, 'UnprocessableEntity');
+  assert.equal(schema.properties.status.const, 422);
+  assert.equal(schema.properties.code.const, 'VALIDATION_FAILED');
+});
+
 test('房间命令、成功结果和样例固定并发与幂等语义', async () => {
   const api = await loadOpenApi();
   const schemas = api.components.schemas;

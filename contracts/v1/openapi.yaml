@@ -124,6 +124,7 @@ paths:
       tags:
         - identity
       operationId: verifyEmail
+      description: 令牌无效、过期、重放、被新令牌取代或用途错误均返回相同的 422 VALIDATION_FAILED，不暴露具体原因。
       requestBody:
         required: true
         content:
@@ -1406,7 +1407,7 @@ components:
       type: apiKey
       in: header
       name: X-CSRF-Token
-      description: 未登录浏览器的同源 CSRF 令牌。
+      description: 未登录网页从同源 Cookie 取得令牌并通过 X-CSRF-Token 请求头回显。
     accountSession:
       type: apiKey
       in: cookie
@@ -3194,14 +3195,11 @@ components:
       type: object
       additionalProperties: false
       required:
-        - accountId
-        - verificationRequired
+        - accepted
       properties:
-        accountId:
-          type: string
-          format: uuid
-        verificationRequired:
+        accepted:
           type: boolean
+          const: true
     ResendVerificationResponse:
       type: object
       additionalProperties: false
@@ -3210,6 +3208,7 @@ components:
       properties:
         accepted:
           type: boolean
+          const: true
     VerifyEmailResponse:
       type: object
       additionalProperties: false
