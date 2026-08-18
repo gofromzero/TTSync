@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:contracts && npm run test:mvp-acceptance",
-    "test:contracts": "node --test",
+    "test:contracts": "node --test test/contracts.test.mjs",
     "test:mvp-acceptance": "node scripts/validate-mvp-acceptance.mjs",
     "contracts:generate": "node scripts/generate-contract-types.mjs",
     "contracts:check": "node scripts/check-contracts.mjs"

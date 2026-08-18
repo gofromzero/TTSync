@@ -31,7 +31,7 @@ assert.equal(
   '生成的房间失效通知 TypeScript 类型已漂移；请运行 npm run contracts:generate 后提交结果。',
 );
 
-const tests = spawnSync(process.execPath, ['--test'], { stdio: 'inherit' });
+const tests = spawnSync(process.execPath, ['--test', 'test/contracts.test.mjs'], { stdio: 'inherit' });
 if (tests.error) throw tests.error;
 if (tests.status !== 0) process.exit(tests.status ?? 1);
 
